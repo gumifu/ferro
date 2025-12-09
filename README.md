@@ -35,3 +35,8 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 # ferro
+
+## Branches
+- `main`: Production branch (ferro-kappa.vercel.app)
+- `v2`: Development branch (v2.ferro-kappa.vercel.app)
+- `v1`: Archive/frozen version (v1.ferro-kappa.vercel.app)
