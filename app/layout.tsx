@@ -50,9 +50,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://ferro-kappa.vercel.app",
     siteName: "ferro",
-    title: "ferro",
+    title: "ferro | Interactive Sound Visualizer",
     description:
-      "Ferro is a floating ferrofluid-inspired sculpture that reacts to sound and motion. A calm companion for your workspace, creating gentle, organic visuals shaped by music and interaction.",
+      "An interactive ferrofluid-inspired sound visualizer that floats, reacts to music and motion, and creates calm, organic visuals that feel alive.",
     images: [
       {
         url: "/ferro_OGP.png",
@@ -64,9 +64,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ferro",
+    title: "ferro | Interactive Sound Visualizer",
     description:
-      "Ferro is a floating ferrofluid-inspired sculpture that reacts to sound and motion. A calm companion for your workspace, creating gentle, organic visuals shaped by music and interaction.",
+      "An interactive ferrofluid-inspired sound visualizer that floats, reacts to music and motion, and creates calm, organic visuals that feel alive.",
     images: ["/ferro_OGP.png"],
     creator: "@ferrofluid",
   },
