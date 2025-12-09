@@ -2,16 +2,8 @@ import FerrofluidVisualizer from "@/components/FerrofluidVisualizer";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-black">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-white mb-4 text-center">
-          Ferrofluid Visualizer
-        </h1>
-        <p className="text-gray-400 text-center mb-8">
-          3D Visualization of Magnetic Fluid
-        </p>
-        <FerrofluidVisualizer />
-      </div>
+    <main className="min-h-screen bg-black overflow-hidden">
+      <FerrofluidVisualizer />
     </main>
   );
 }

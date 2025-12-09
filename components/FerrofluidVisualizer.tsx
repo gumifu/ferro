@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createNoise3D } from "simplex-noise";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import {
+  FaMicrophone,
+  FaMicrophoneSlash,
+  FaUpload,
+  FaStop,
+  FaDesktop,
+} from "react-icons/fa";
 
 // Initialize Simplex noise for smooth, liquid-like deformations
 const noise3D = createNoise3D();
@@ -154,8 +161,9 @@ export default function FerrofluidVisualizer() {
   useEffect(() => {
     if (!containerRef.current || sceneRef.current) return;
 
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
+    // Use full viewport size
+    const width = window.innerWidth;
+    const height = window.innerHeight;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -175,6 +183,10 @@ export default function FerrofluidVisualizer() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
+    // Make canvas fill the container
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    renderer.domElement.style.display = "block";
     containerRef.current.appendChild(renderer.domElement);
 
     // Group for all objects
@@ -510,8 +522,9 @@ export default function FerrofluidVisualizer() {
     // Handle resize
     const handleResize = () => {
       if (!containerRef.current || !sceneRef.current) return;
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
+      // Use full viewport size
+      const width = window.innerWidth;
+      const height = window.innerHeight;
 
       sceneRef.current.camera.aspect = width / height;
       sceneRef.current.camera.updateProjectionMatrix();
@@ -789,20 +802,19 @@ export default function FerrofluidVisualizer() {
   };
 
   return (
-    <div
-      className="relative w-full h-screen overflow-hidden bg-black"
-      style={{
-        minHeight: "600px",
-      }}
-    >
-      <div
-        ref={containerRef}
-        className="w-full h-full"
-        style={{ minHeight: "600px" }}
-      />
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-4 items-center flex-wrap justify-center">
+    <div className="relative w-screen h-screen overflow-hidden bg-black">
+      <div ref={containerRef} className="w-full h-full" />
+
+      {/* Simple control panel */}
+      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-3 items-center">
         {/* File upload */}
-        <label className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg transition-all cursor-pointer">
+        <label
+          className={`px-4 py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
+            isSystemAudio
+              ? "bg-gray-600 cursor-not-allowed opacity-50"
+              : "bg-blue-600 hover:bg-blue-700"
+          } text-white`}
+        >
           <input
             type="file"
             accept="audio/*"
@@ -810,7 +822,10 @@ export default function FerrofluidVisualizer() {
             className="hidden"
             disabled={isSystemAudio}
           />
-          {isPlayingFile ? "Change Music" : "Upload Music"}
+          <FaUpload />
+          <span className="text-sm font-medium">
+            {isPlayingFile ? "Change" : "Upload"}
+          </span>
         </label>
 
         {/* Microphone button */}
@@ -818,42 +833,46 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startMicrophone}
             disabled={isPlayingFile || isSystemAudio}
-            className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-all ${
+            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 ${
               isPlayingFile || isSystemAudio
-                ? "bg-gray-500 cursor-not-allowed"
+                ? "bg-gray-600 cursor-not-allowed opacity-50"
                 : "bg-purple-600 hover:bg-purple-700"
             } text-white`}
           >
-            Start Microphone
+            <FaMicrophone />
+            <span className="text-sm font-medium">Mic</span>
           </button>
         ) : (
           <button
             onClick={stopMicrophone}
-            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
           >
-            Stop Microphone
+            <FaMicrophoneSlash />
+            <span className="text-sm font-medium">Stop</span>
           </button>
         )}
 
-        {/* System audio (screen share) button */}
+        {/* System audio button */}
         {!isSystemAudio ? (
           <button
             onClick={startSystemAudio}
             disabled={isPlayingFile || isRecording}
-            className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-all ${
+            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 ${
               isPlayingFile || isRecording
-                ? "bg-gray-500 cursor-not-allowed"
+                ? "bg-gray-600 cursor-not-allowed opacity-50"
                 : "bg-green-600 hover:bg-green-700"
             } text-white`}
           >
-            Capture System Audio
+            <FaDesktop />
+            <span className="text-sm font-medium">System</span>
           </button>
         ) : (
           <button
             onClick={stopSystemAudio}
-            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
           >
-            Stop System Audio
+            <FaStop />
+            <span className="text-sm font-medium">Stop</span>
           </button>
         )}
 
@@ -861,14 +880,17 @@ export default function FerrofluidVisualizer() {
         {isPlayingFile && (
           <button
             onClick={stopAudioFile}
-            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
           >
-            Stop
+            <FaStop />
+            <span className="text-sm font-medium">Stop</span>
           </button>
         )}
       </div>
+
+      {/* Error message */}
       {error && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-10 bg-red-600 text-white px-4 py-2 rounded">
+        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 bg-red-600/90 text-white px-4 py-2 rounded-lg text-sm shadow-lg">
           {error}
         </div>
       )}
