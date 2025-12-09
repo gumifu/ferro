@@ -1,0 +1,757 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { createNoise3D } from "simplex-noise";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+
+// Initialize Simplex noise for smooth, liquid-like deformations
+const noise3D = createNoise3D();
+
+// Helper functions
+function fractionate(val: number, minVal: number, maxVal: number): number {
+  return (val - minVal) / (maxVal - minVal);
+}
+
+function modulate(
+  val: number,
+  minVal: number,
+  maxVal: number,
+  outMin: number,
+  outMax: number
+): number {
+  const fr = fractionate(val, minVal, maxVal);
+  const delta = outMax - outMin;
+  return outMin + fr * delta;
+}
+
+function avg(arr: Uint8Array): number {
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    total += arr[i];
+  }
+  return total / arr.length;
+}
+
+function max(arr: Uint8Array): number {
+  let maxVal = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] > maxVal) maxVal = arr[i];
+  }
+  return maxVal;
+}
+
+// Create animated gradient background plane (Apple style)
+function createAnimatedGradientBackground(
+  width: number,
+  height: number
+): THREE.Mesh {
+  // Make plane large enough to cover camera view
+  // Camera is at z=100, plane at z=-50, so distance is 150
+  // With 45deg FOV, we need a large plane
+  const planeWidth = Math.max(width, height) * 3;
+  const planeHeight = Math.max(width, height) * 3;
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+  const vertexShader = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const fragmentShader = `
+    precision highp float;
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform vec2 uResolution;
+
+    // 簡易ノイズ（sinベース）
+    float noise(vec2 p) {
+      return sin(p.x) * sin(p.y);
+    }
+
+    void main() {
+      vec2 uv = vUv;
+      float t = uTime * 0.08;
+
+      // 座標をゆっくりゆがませる
+      vec2 p = uv * 3.0;
+      float n = noise(p + vec2(t, -t * 1.3));
+      float n2 = noise(p * 0.7 + vec2(-t * 0.4, t * 0.6));
+      float offset = n * 0.15 + n2 * 0.1;
+
+      // ベースになる縦グラデーション（ノイズでゆらす）
+      float y = uv.y + offset;
+
+      // Apple-style multi-color gradient
+      vec3 col1 = vec3(0.05, 0.02, 0.18);  // deep purple (top)
+      vec3 col2 = vec3(1.00, 0.60, 0.30);  // warm orange (middle)
+      vec3 col3 = vec3(0.10, 0.35, 0.95);  // blue (bottom)
+
+      // Add subtle horizontal shifting for wind-like movement
+      float horizontalOffset = noise(p * 0.5 + vec2(t * 0.2, t * 0.15)) * 0.05;
+      float yWithOffset = uv.y + offset + horizontalOffset;
+
+      // Smooth interpolation with soft transitions
+      vec3 top = mix(col1, col2, smoothstep(0.2, 0.7, yWithOffset));
+      vec3 bottom = mix(col2, col3, smoothstep(0.4, 1.1, yWithOffset));
+      vec3 color = mix(top, bottom, smoothstep(0.0, 1.0, yWithOffset));
+
+      // Subtle breathing effect (slower and softer)
+      float breathe = 0.04 * sin(t * 0.5);
+      color += breathe;
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: {
+      uTime: { value: 0 },
+      uResolution: { value: new THREE.Vector2(width, height) },
+    },
+  });
+
+  const plane = new THREE.Mesh(geometry, material);
+  // Position plane far behind the camera's view
+  // Camera is at z=100 looking at 0,0,0, so place plane at z=-50 to be visible
+  plane.position.z = -50;
+  plane.position.x = 0;
+  plane.position.y = 0;
+
+  return plane;
+}
+
+export default function FerrofluidVisualizer() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlayingFile, setIsPlayingFile] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sceneRef = useRef<{
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    renderer: THREE.WebGLRenderer;
+    group: THREE.Group;
+    ball: THREE.Mesh;
+    plane: THREE.Mesh;
+    plane2: THREE.Mesh;
+    analyser: AnalyserNode | null;
+    audioContext: AudioContext | null;
+    dataArray: Uint8Array | null;
+    clock: THREE.Clock;
+    mousePosition: THREE.Vector3;
+    mouseActive: boolean;
+    animationId: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || sceneRef.current) return;
+
+    const width = containerRef.current.clientWidth;
+    const height = containerRef.current.clientHeight;
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    // Set background to null so CSS gradient shows through
+    scene.background = null;
+
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    camera.position.set(0, 0, 100);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    containerRef.current.appendChild(renderer.domElement);
+
+    // Group for all objects
+    const group = new THREE.Group();
+    scene.add(group);
+
+    // Enhanced lighting for metallic ferrofluid look
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambientLight);
+
+    // Main light (reduced intensity for HDRI compatibility)
+    const spotLight = new THREE.SpotLight(0xffffff, 1.2);
+    spotLight.position.set(-10, 40, 20);
+    spotLight.lookAt(0, 0, 0);
+    spotLight.angle = Math.PI / 4;
+    spotLight.penumbra = 0.3;
+    scene.add(spotLight);
+
+    // Additional lights for better reflections (reduced intensity)
+    const pointLight1 = new THREE.PointLight(0xffffff, 0.8, 100);
+    pointLight1.position.set(15, 15, 15);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0xffffff, 0.6, 100);
+    pointLight2.position.set(-15, -15, 15);
+    scene.add(pointLight2);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    directionalLight.position.set(5, 10, 5);
+    scene.add(directionalLight);
+
+    // Plane 1
+    const planeGeometry = new THREE.PlaneGeometry(800, 800, 20, 20);
+    const planeMaterial = new THREE.MeshLambertMaterial({
+      color: 0x6904ce,
+      side: THREE.DoubleSide,
+      wireframe: true,
+    });
+
+    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane.rotation.x = -0.5 * Math.PI;
+    plane.position.set(0, 30, 0);
+    // group.add(plane);
+
+    // Plane 2
+    const plane2 = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane2.rotation.x = -0.5 * Math.PI;
+    plane2.position.set(0, -30, 0);
+    // group.add(plane2); // Wireframe plane disabled for cleaner look
+
+    // Ball - Ferrofluid style with glossy black texture
+    // Use SphereGeometry instead of IcosahedronGeometry for smooth appearance
+    const ballGeometry = new THREE.SphereGeometry(10, 128, 128);
+
+    // Create glossy black ferrofluid material
+    const ferrofluidMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x000000, // Pure black
+      metalness: 1.0, // Maximum metallic
+      roughness: 0.1, // Very smooth/glossy
+      clearcoat: 1.0, // Clear coat for extra shine
+      clearcoatRoughness: 0.05, // Very smooth clear coat
+      reflectivity: 1.0, // High reflectivity
+      emissive: 0x000000,
+      emissiveIntensity: 0,
+      side: THREE.DoubleSide,
+    });
+
+    const ball = new THREE.Mesh(ballGeometry, ferrofluidMaterial);
+    ball.position.set(0, 0, 0);
+    group.add(ball);
+
+    // Create animated gradient background
+    const backgroundPlane = createAnimatedGradientBackground(width, height);
+    scene.add(backgroundPlane);
+
+    // Setup HDRI environment map for realistic reflections
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+
+    // Try to load HDRI, fallback gracefully if not found
+    const rgbeLoader = new RGBELoader();
+    rgbeLoader.setPath("/hdr/").load(
+      "studio.hdr",
+      (hdrTexture) => {
+        const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
+        scene.environment = envMap;
+        ferrofluidMaterial.envMap = envMap;
+        ferrofluidMaterial.envMapIntensity = 1.2;
+        ferrofluidMaterial.needsUpdate = true;
+        hdrTexture.dispose();
+        pmremGenerator.dispose();
+      },
+      undefined,
+      (error) => {
+        console.log("HDRI not found, using default lighting:", error);
+        // Continue without HDRI - existing lights will work
+        pmremGenerator.dispose();
+      }
+    );
+
+    // Clock for time-based animations
+    const clock = new THREE.Clock();
+
+    // Mouse position for magnetic attraction
+    const mousePosition = new THREE.Vector3(0, 0, 0);
+    const mouseActiveRef = { value: false };
+
+    sceneRef.current = {
+      scene,
+      camera,
+      renderer,
+      group,
+      ball,
+      plane,
+      plane2,
+      analyser: null,
+      audioContext: null,
+      dataArray: null,
+      clock,
+      mousePosition,
+      mouseActive: mouseActiveRef.value,
+      animationId: 0,
+    };
+
+    // Mouse interaction - convert mouse position to 3D space
+    const containerElement = containerRef.current;
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!containerElement || !sceneRef.current) return;
+
+      const rect = containerElement.getBoundingClientRect();
+      const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      // Raycast from camera to find 3D position
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+      // Intersect with a plane at z=0 (where the ball center is)
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const pointOnPlane = new THREE.Vector3();
+      ray.ray.intersectPlane(plane, pointOnPlane);
+
+      sceneRef.current.mousePosition.copy(pointOnPlane);
+      mouseActiveRef.value = true;
+      sceneRef.current.mouseActive = true;
+    };
+
+    const handleMouseLeave = () => {
+      if (sceneRef.current) {
+        mouseActiveRef.value = false;
+        sceneRef.current.mouseActive = false;
+      }
+    };
+
+    containerElement.addEventListener("mousemove", handleMouseMove);
+    containerElement.addEventListener("mouseleave", handleMouseLeave);
+
+    // Make rough ball function with magnetic mouse attraction
+    const makeRoughBall = (
+      mesh: THREE.Mesh,
+      bassFr: number,
+      treFr: number,
+      mousePos: THREE.Vector3,
+      mouseActive: boolean
+    ) => {
+      const geometry = mesh.geometry as THREE.SphereGeometry;
+      const vertices = geometry.attributes.position as THREE.BufferAttribute;
+      const time = window.performance.now();
+
+      // Magnetic attraction parameters
+      const magnetStrength = 15.0; // Strength of magnetic pull
+      const magnetRange = 30.0; // Range of magnetic influence
+
+      for (let i = 0; i < vertices.count; i++) {
+        const x = vertices.getX(i);
+        const y = vertices.getY(i);
+        const z = vertices.getZ(i);
+
+        const length = Math.sqrt(x * x + y * y + z * z);
+        const nx = x / length;
+        const ny = y / length;
+        const nz = z / length;
+
+        // Smoother parameters for liquid-like deformations
+        const amp = 2.0; // smaller amplitude for rounded spikes
+        const offset = 10; // sphere radius
+        const noiseValue = noise3D(
+          nx * 1.5 + time * 0.3,
+          ny * 1.5 + time * 0.35,
+          nz * 1.5 + time * 0.4
+        );
+        // More subtle modulation for liquid appearance
+        let distance = offset + bassFr * 0.8 + noiseValue * amp * treFr;
+
+        // Apply magnetic attraction if mouse is active
+        if (mouseActive) {
+          const vertexWorldPos = new THREE.Vector3(
+            nx * offset,
+            ny * offset,
+            nz * offset
+          );
+          const toMouse = new THREE.Vector3().subVectors(
+            mousePos,
+            vertexWorldPos
+          );
+          const distToMouse = toMouse.length();
+
+          if (distToMouse < magnetRange && distToMouse > 0.1) {
+            // Inverse square law for magnetic force
+            const force = magnetStrength / (distToMouse * distToMouse + 1.0);
+            const pullDirection = toMouse.normalize();
+
+            // Pull vertex towards mouse
+            const pullAmount = force * 0.1; // Scale factor
+            distance +=
+              pullAmount *
+              Math.max(0, pullDirection.dot(new THREE.Vector3(nx, ny, nz)));
+          }
+        }
+
+        vertices.setXYZ(i, nx * distance, ny * distance, nz * distance);
+      }
+
+      vertices.needsUpdate = true;
+      geometry.computeVertexNormals();
+    };
+
+    // Make rough ground function
+    const makeRoughGround = (mesh: THREE.Mesh, distortionFr: number) => {
+      const geometry = mesh.geometry as THREE.PlaneGeometry;
+      const vertices = geometry.attributes.position;
+      const time = Date.now();
+      const amp = 2;
+
+      for (let i = 0; i < vertices.count; i++) {
+        const x = vertices.getX(i);
+        const y = vertices.getY(i);
+
+        const noiseValue = noise3D(x + time * 0.0003, y + time * 0.0001, 0);
+        const distance = (noiseValue + 0) * distortionFr * amp;
+
+        vertices.setZ(i, distance);
+      }
+
+      vertices.needsUpdate = true;
+      geometry.computeVertexNormals();
+    };
+
+    // Render function
+    const render = () => {
+      if (!sceneRef.current) return;
+
+      const {
+        analyser,
+        dataArray,
+        ball,
+        plane,
+        plane2,
+        group,
+        scene: currentScene,
+        clock,
+        mousePosition,
+        mouseActive: mouseActiveValue,
+      } = sceneRef.current;
+
+      // Update mouseActive from ref
+      const mouseActive = mouseActiveRef.value || mouseActiveValue;
+
+      // Update background gradient time using clock
+      const elapsedTime = clock.getElapsedTime();
+      currentScene.children.forEach((child) => {
+        if (
+          child instanceof THREE.Mesh &&
+          child.material instanceof THREE.ShaderMaterial
+        ) {
+          if (child.material.uniforms.uTime) {
+            child.material.uniforms.uTime.value = elapsedTime;
+          }
+        }
+      });
+
+      if (analyser && dataArray) {
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(buffer);
+
+        const lowerHalfLength = Math.floor(buffer.length / 2) - 1;
+        const upperHalfLength = buffer.length - lowerHalfLength - 1;
+
+        const lowerHalfArray = new Uint8Array(lowerHalfLength);
+        const upperHalfArray = new Uint8Array(upperHalfLength);
+
+        for (let i = 0; i < lowerHalfLength; i++) {
+          lowerHalfArray[i] = buffer[i];
+        }
+        for (let i = 0; i < upperHalfLength; i++) {
+          upperHalfArray[i] = buffer[lowerHalfLength + i];
+        }
+
+        const lowerMax = max(lowerHalfArray);
+        const upperAvg = avg(upperHalfArray);
+
+        const lowerMaxFr = lowerMax / lowerHalfArray.length;
+        const upperAvgFr = upperAvg / upperHalfArray.length;
+
+        // Update planes only if they are added to the scene
+        if (plane && plane2) {
+          makeRoughGround(plane, modulate(upperAvgFr, 0, 1, 0.5, 4));
+          makeRoughGround(plane2, modulate(lowerMaxFr, 0, 1, 0.5, 4));
+        }
+
+        makeRoughBall(
+          ball,
+          modulate(Math.pow(lowerMaxFr, 0.8), 0, 1, 0, 8),
+          modulate(upperAvgFr, 0, 1, 0, 4),
+          mousePosition,
+          mouseActive
+        );
+      } else {
+        // Even without audio, apply mouse attraction
+        makeRoughBall(ball, 0, 0, mousePosition, mouseActive);
+      }
+
+      group.rotation.y += 0.005;
+      sceneRef.current.renderer.render(
+        sceneRef.current.scene,
+        sceneRef.current.camera
+      );
+      sceneRef.current.animationId = requestAnimationFrame(render);
+    };
+
+    sceneRef.current.animationId = requestAnimationFrame(render);
+
+    // Handle resize
+    const handleResize = () => {
+      if (!containerRef.current || !sceneRef.current) return;
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+
+      sceneRef.current.camera.aspect = width / height;
+      sceneRef.current.camera.updateProjectionMatrix();
+      sceneRef.current.renderer.setSize(width, height);
+
+      // Update background plane size and resolution
+      sceneRef.current.scene.children.forEach((child) => {
+        if (
+          child instanceof THREE.Mesh &&
+          child.material instanceof THREE.ShaderMaterial
+        ) {
+          if (child.material.uniforms.uResolution) {
+            child.material.uniforms.uResolution.value.set(width, height);
+          }
+          if (child.geometry instanceof THREE.PlaneGeometry) {
+            // Make background plane large enough to cover camera view
+            const size = Math.max(width, height) * 3;
+            child.geometry.dispose();
+            child.geometry = new THREE.PlaneGeometry(size, size);
+          }
+        }
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (sceneRef.current) {
+        cancelAnimationFrame(sceneRef.current.animationId);
+        if (sceneRef.current.audioContext) {
+          sceneRef.current.audioContext.close();
+        }
+        // Clean up audio file if playing
+        if (audioRef.current) {
+          audioRef.current.pause();
+          if (audioRef.current.src.startsWith("blob:")) {
+            URL.revokeObjectURL(audioRef.current.src);
+          }
+        }
+        if (
+          containerElement &&
+          containerElement.contains(sceneRef.current.renderer.domElement)
+        ) {
+          containerElement.removeChild(sceneRef.current.renderer.domElement);
+        }
+        sceneRef.current.renderer.dispose();
+      }
+    };
+  }, []);
+
+  const startMicrophone = async () => {
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      if (!sceneRef.current) return;
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+
+      source.connect(analyser);
+      analyser.connect(audioContext.destination);
+      analyser.fftSize = 512;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      sceneRef.current.analyser = analyser;
+      sceneRef.current.audioContext = audioContext;
+      sceneRef.current.dataArray = dataArray;
+
+      setIsRecording(true);
+    } catch (err) {
+      setError(
+        "マイクへのアクセスが拒否されました。ブラウザの設定を確認してください。"
+      );
+      console.error("Error accessing microphone:", err);
+    }
+  };
+
+  const stopMicrophone = () => {
+    if (sceneRef.current?.audioContext) {
+      sceneRef.current.audioContext.close();
+      sceneRef.current.analyser = null;
+      sceneRef.current.audioContext = null;
+      sceneRef.current.dataArray = null;
+      setIsRecording(false);
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Stop microphone if active
+    if (isRecording) {
+      stopMicrophone();
+    }
+
+    setError(null);
+
+    // Create audio element
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    audio.src = URL.createObjectURL(file);
+
+    audioRef.current = audio;
+
+    // Setup audio context when audio is ready
+    audio.addEventListener("loadeddata", () => {
+      if (!sceneRef.current) return;
+
+      try {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        const source = audioContext.createMediaElementSource(audio);
+        const analyser = audioContext.createAnalyser();
+
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+        analyser.fftSize = 512;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        sceneRef.current.analyser = analyser;
+        sceneRef.current.audioContext = audioContext;
+        sceneRef.current.dataArray = dataArray;
+
+        setIsPlayingFile(true);
+      } catch (err) {
+        setError("オーディオファイルの読み込みに失敗しました。");
+        console.error("Error loading audio file:", err);
+      }
+    });
+
+    audio.addEventListener("error", () => {
+      setError("オーディオファイルの読み込みに失敗しました。");
+      setIsPlayingFile(false);
+    });
+
+    audio.addEventListener("ended", () => {
+      setIsPlayingFile(false);
+    });
+
+    // Play audio
+    audio.play().catch((err) => {
+      setError(
+        "オーディオの再生に失敗しました。ユーザーの操作が必要な場合があります。"
+      );
+      console.error("Error playing audio:", err);
+    });
+  };
+
+  const stopAudioFile = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      if (audioRef.current.src.startsWith("blob:")) {
+        URL.revokeObjectURL(audioRef.current.src);
+      }
+      audioRef.current = null;
+    }
+    if (sceneRef.current?.audioContext) {
+      sceneRef.current.audioContext.close();
+      sceneRef.current.analyser = null;
+      sceneRef.current.audioContext = null;
+      sceneRef.current.dataArray = null;
+    }
+    setIsPlayingFile(false);
+  };
+
+  return (
+    <div
+      className="relative w-full h-screen overflow-hidden bg-black"
+      style={{
+        minHeight: "600px",
+      }}
+    >
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ minHeight: "600px" }}
+      />
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-4 items-center">
+        {/* File upload */}
+        <label className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg transition-all cursor-pointer">
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          {isPlayingFile ? "音楽を変更" : "音楽をアップロード"}
+        </label>
+
+        {/* Microphone button */}
+        {!isRecording ? (
+          <button
+            onClick={startMicrophone}
+            disabled={isPlayingFile}
+            className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-all ${
+              isPlayingFile
+                ? "bg-gray-500 cursor-not-allowed"
+                : "bg-purple-600 hover:bg-purple-700"
+            } text-white`}
+          >
+            マイクを開始
+          </button>
+        ) : (
+          <button
+            onClick={stopMicrophone}
+            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+          >
+            マイクを停止
+          </button>
+        )}
+
+        {/* Stop audio file button */}
+        {isPlayingFile && (
+          <button
+            onClick={stopAudioFile}
+            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+          >
+            停止
+          </button>
+        )}
+      </div>
+      {error && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-10 bg-red-600 text-white px-4 py-2 rounded">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
