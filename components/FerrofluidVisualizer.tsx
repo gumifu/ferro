@@ -951,14 +951,14 @@ export default function FerrofluidVisualizer() {
       <div ref={containerRef} className="w-full h-full" />
 
       {/* Simple control panel - Center */}
-      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-3 items-center">
+      <div className="absolute bottom-3 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-2 sm:gap-3 items-center flex-wrap justify-center max-w-[calc(100%-8rem)] sm:max-w-none">
         {/* File upload */}
         <label
-          className={`px-4 py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-2 backdrop-blur-md border border-white/20 ${
+          className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
             isSystemAudio
               ? "cursor-not-allowed opacity-50 bg-blue-600/30"
               : "bg-blue-600/40 hover:bg-blue-600/50"
-          } text-white`}
+          } text-white drop-shadow-lg`}
         >
           <input
             type="file"
@@ -967,8 +967,8 @@ export default function FerrofluidVisualizer() {
             className="hidden"
             disabled={isSystemAudio}
           />
-          <FaUpload />
-          <span className="text-sm font-medium">
+          <FaUpload className="drop-shadow-md text-xs sm:text-base" />
+          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
             {isPlayingFile ? "Change" : "Upload"}
           </span>
         </label>
@@ -978,22 +978,26 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startMicrophone}
             disabled={isPlayingFile || isSystemAudio}
-            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 backdrop-blur-md border border-white/20 ${
+            className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isSystemAudio
                 ? "cursor-not-allowed opacity-50 bg-purple-600/30"
                 : "bg-purple-600/40 hover:bg-purple-600/50"
-            } text-white`}
+            } text-white drop-shadow-lg`}
           >
-            <FaMicrophone />
-            <span className="text-sm font-medium">Mic</span>
+            <FaMicrophone className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              Mic
+            </span>
           </button>
         ) : (
           <button
             onClick={stopMicrophone}
-            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
           >
-            <FaMicrophoneSlash />
-            <span className="text-sm font-medium">Stop</span>
+            <FaMicrophoneSlash className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              Stop
+            </span>
           </button>
         )}
 
@@ -1002,22 +1006,26 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startSystemAudio}
             disabled={isPlayingFile || isRecording}
-            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 backdrop-blur-md border border-white/20 ${
+            className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isRecording
                 ? "cursor-not-allowed opacity-50 bg-green-600/30"
                 : "bg-green-600/40 hover:bg-green-600/50"
-            } text-white`}
+            } text-white drop-shadow-lg`}
           >
-            <FaDesktop />
-            <span className="text-sm font-medium">System</span>
+            <FaDesktop className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              System
+            </span>
           </button>
         ) : (
           <button
             onClick={stopSystemAudio}
-            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
           >
-            <FaStop />
-            <span className="text-sm font-medium">Stop</span>
+            <FaStop className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              Stop
+            </span>
           </button>
         )}
 
@@ -1025,10 +1033,12 @@ export default function FerrofluidVisualizer() {
         {isPlayingFile && (
           <button
             onClick={stopAudioFile}
-            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
           >
-            <FaStop />
-            <span className="text-sm font-medium">Stop</span>
+            <FaStop className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              Stop
+            </span>
           </button>
         )}
       </div>
@@ -1037,20 +1047,24 @@ export default function FerrofluidVisualizer() {
       {!isPiPActive ? (
         <button
           onClick={startPictureInPicture}
-          className="absolute bottom-6 right-6 z-10 px-4 py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white shadow-lg transition-all flex items-center gap-2"
+          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
           title="Start Picture-in-Picture"
         >
-          <FaExpand />
-          <span className="text-sm font-medium">PiP</span>
+          <FaExpand className="drop-shadow-md text-xs sm:text-base" />
+          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+            PiP
+          </span>
         </button>
       ) : (
         <button
           onClick={stopPictureInPicture}
-          className="absolute bottom-6 right-6 z-10 px-4 py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white shadow-lg transition-all flex items-center gap-2"
+          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
           title="Stop Picture-in-Picture"
         >
-          <FaCompress />
-          <span className="text-sm font-medium">Exit</span>
+          <FaCompress className="drop-shadow-md text-xs sm:text-base" />
+          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+            Exit
+          </span>
         </button>
       )}
 
