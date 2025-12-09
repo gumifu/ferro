@@ -10,6 +10,8 @@ import {
   FaUpload,
   FaStop,
   FaDesktop,
+  FaExpand,
+  FaCompress,
 } from "react-icons/fa";
 
 // Initialize Simplex noise for smooth, liquid-like deformations
@@ -137,9 +139,11 @@ export default function FerrofluidVisualizer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const systemAudioStreamRef = useRef<MediaStream | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlayingFile, setIsPlayingFile] = useState(false);
   const [isSystemAudio, setIsSystemAudio] = useState(false);
+  const [isPiPActive, setIsPiPActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sceneRef = useRef<{
     scene: THREE.Scene;
@@ -746,6 +750,113 @@ export default function FerrofluidVisualizer() {
     setIsSystemAudio(false);
   };
 
+  const startPictureInPicture = async () => {
+    if (!sceneRef.current?.renderer?.domElement) {
+      setError("Canvas not available for Picture-in-Picture");
+      return;
+    }
+
+    const canvas = sceneRef.current.renderer.domElement;
+
+    // Check if Picture-in-Picture API is supported
+    if (!document.pictureInPictureEnabled) {
+      setError("Picture-in-Picture is not supported in this browser");
+      return;
+    }
+
+    try {
+      // Create a video element to use for PiP
+      const video = document.createElement("video");
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.style.width = `${canvas.width}px`;
+      video.style.height = `${canvas.height}px`;
+
+      // Capture canvas stream and set it to video
+      const stream = canvas.captureStream(60); // 60 FPS
+      video.srcObject = stream;
+      video.play();
+
+      // Store video reference
+      pipVideoRef.current = video;
+
+      // Wait for video to be ready
+      await new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          video.play().then(resolve).catch(resolve);
+        };
+      });
+
+      // Request Picture-in-Picture
+      await video.requestPictureInPicture();
+      setIsPiPActive(true);
+      setError(null); // Clear any previous errors
+
+      // Listen for when PiP is closed
+      video.addEventListener(
+        "leavepictureinpicture",
+        () => {
+          setIsPiPActive(false);
+          // Cleanup
+          if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+          }
+          video.srcObject = null;
+          pipVideoRef.current = null;
+        },
+        { once: true }
+      );
+    } catch (err) {
+      // Silently handle errors without showing to user or console
+      const error = err as Error;
+
+      // Only log non-permission errors for debugging
+      if (
+        error.name !== "NotAllowedError" &&
+        !error.message.includes("Permission denied") &&
+        !error.message.includes("denied by user")
+      ) {
+        console.error("Picture-in-Picture error:", err);
+      }
+
+      setIsPiPActive(false);
+
+      // Cleanup on error
+      if (pipVideoRef.current) {
+        if (pipVideoRef.current.srcObject) {
+          const stream = pipVideoRef.current.srcObject as MediaStream;
+          stream.getTracks().forEach((track) => track.stop());
+        }
+        pipVideoRef.current.srcObject = null;
+        pipVideoRef.current = null;
+      }
+
+      // Don't show error message to user - fail silently
+    }
+  };
+
+  const stopPictureInPicture = async () => {
+    if (document.pictureInPictureElement) {
+      try {
+        await document.exitPictureInPicture();
+        setIsPiPActive(false);
+        // Cleanup video element
+        if (pipVideoRef.current) {
+          if (pipVideoRef.current.srcObject) {
+            const stream = pipVideoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach((track) => track.stop());
+          }
+          pipVideoRef.current.srcObject = null;
+          pipVideoRef.current = null;
+        }
+      } catch (err) {
+        setError("Failed to stop Picture-in-Picture");
+        console.error("Picture-in-Picture exit error:", err);
+      }
+    }
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -839,14 +950,14 @@ export default function FerrofluidVisualizer() {
     <div className="relative w-screen h-screen overflow-hidden bg-black">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Simple control panel */}
+      {/* Simple control panel - Center */}
       <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-3 items-center">
         {/* File upload */}
         <label
-          className={`px-4 py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-2 backdrop-blur-md border border-white/20 ${
             isSystemAudio
-              ? "bg-gray-600 cursor-not-allowed opacity-50"
-              : "bg-blue-600 hover:bg-blue-700"
+              ? "cursor-not-allowed opacity-50 bg-blue-600/30"
+              : "bg-blue-600/40 hover:bg-blue-600/50"
           } text-white`}
         >
           <input
@@ -867,10 +978,10 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startMicrophone}
             disabled={isPlayingFile || isSystemAudio}
-            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 ${
+            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isSystemAudio
-                ? "bg-gray-600 cursor-not-allowed opacity-50"
-                : "bg-purple-600 hover:bg-purple-700"
+                ? "cursor-not-allowed opacity-50 bg-purple-600/30"
+                : "bg-purple-600/40 hover:bg-purple-600/50"
             } text-white`}
           >
             <FaMicrophone />
@@ -879,7 +990,7 @@ export default function FerrofluidVisualizer() {
         ) : (
           <button
             onClick={stopMicrophone}
-            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
           >
             <FaMicrophoneSlash />
             <span className="text-sm font-medium">Stop</span>
@@ -891,10 +1002,10 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startSystemAudio}
             disabled={isPlayingFile || isRecording}
-            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 ${
+            className={`px-4 py-3 rounded-full shadow-lg transition-all flex items-center gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isRecording
-                ? "bg-gray-600 cursor-not-allowed opacity-50"
-                : "bg-green-600 hover:bg-green-700"
+                ? "cursor-not-allowed opacity-50 bg-green-600/30"
+                : "bg-green-600/40 hover:bg-green-600/50"
             } text-white`}
           >
             <FaDesktop />
@@ -903,7 +1014,7 @@ export default function FerrofluidVisualizer() {
         ) : (
           <button
             onClick={stopSystemAudio}
-            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
           >
             <FaStop />
             <span className="text-sm font-medium">Stop</span>
@@ -914,13 +1025,34 @@ export default function FerrofluidVisualizer() {
         {isPlayingFile && (
           <button
             onClick={stopAudioFile}
-            className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2"
+            className="px-4 py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white shadow-lg transition-all flex items-center gap-2"
           >
             <FaStop />
             <span className="text-sm font-medium">Stop</span>
           </button>
         )}
       </div>
+
+      {/* Picture-in-Picture button - Right side */}
+      {!isPiPActive ? (
+        <button
+          onClick={startPictureInPicture}
+          className="absolute bottom-6 right-6 z-10 px-4 py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white shadow-lg transition-all flex items-center gap-2"
+          title="Start Picture-in-Picture"
+        >
+          <FaExpand />
+          <span className="text-sm font-medium">PiP</span>
+        </button>
+      ) : (
+        <button
+          onClick={stopPictureInPicture}
+          className="absolute bottom-6 right-6 z-10 px-4 py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white shadow-lg transition-all flex items-center gap-2"
+          title="Stop Picture-in-Picture"
+        >
+          <FaCompress />
+          <span className="text-sm font-medium">Exit</span>
+        </button>
+      )}
 
       {/* Error message */}
       {error && (
