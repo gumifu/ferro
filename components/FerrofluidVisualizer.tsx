@@ -165,9 +165,23 @@ export default function FerrofluidVisualizer() {
   useEffect(() => {
     if (!containerRef.current || sceneRef.current) return;
 
-    // Use full viewport size
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // Use full viewport size, accounting for mobile browser UI
+    const getViewportSize = () => {
+      // Use visualViewport if available (better for mobile)
+      if (window.visualViewport) {
+        return {
+          width: window.visualViewport.width,
+          height: window.visualViewport.height,
+        };
+      }
+      // Fallback to window size
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+    };
+
+    const { width, height } = getViewportSize();
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -560,9 +574,23 @@ export default function FerrofluidVisualizer() {
     // Handle resize
     const handleResize = () => {
       if (!containerRef.current || !sceneRef.current) return;
-      // Use full viewport size
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      // Use full viewport size, accounting for mobile browser UI
+      const getViewportSize = () => {
+        // Use visualViewport if available (better for mobile)
+        if (window.visualViewport) {
+          return {
+            width: window.visualViewport.width,
+            height: window.visualViewport.height,
+          };
+        }
+        // Fallback to window size
+        return {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        };
+      };
+
+      const { width, height } = getViewportSize();
 
       sceneRef.current.camera.aspect = width / height;
       sceneRef.current.camera.updateProjectionMatrix();
@@ -588,9 +616,19 @@ export default function FerrofluidVisualizer() {
     };
 
     window.addEventListener("resize", handleResize);
+    // Also listen to visualViewport changes for mobile browsers
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleResize);
+      window.visualViewport.addEventListener("scroll", handleResize);
+    }
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      // Cleanup visualViewport listeners
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleResize);
+        window.visualViewport.removeEventListener("scroll", handleResize);
+      }
       if (sceneRef.current) {
         cancelAnimationFrame(sceneRef.current.animationId);
         if (sceneRef.current.audioContext) {
@@ -947,14 +985,17 @@ export default function FerrofluidVisualizer() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black">
+    <div
+      className="relative w-screen h-screen overflow-hidden bg-black"
+      style={{ height: "100dvh" }}
+    >
       <div ref={containerRef} className="w-full h-full" />
 
       {/* Simple control panel - Center */}
       <div className="absolute bottom-3 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-2 sm:gap-3 items-center flex-wrap justify-center max-w-[calc(100%-8rem)] sm:max-w-none">
         {/* File upload */}
         <label
-          className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+          className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
             isSystemAudio
               ? "cursor-not-allowed opacity-50 bg-blue-600/30"
               : "bg-blue-600/40 hover:bg-blue-600/50"
@@ -978,7 +1019,7 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startMicrophone}
             disabled={isPlayingFile || isSystemAudio}
-            className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+            className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isSystemAudio
                 ? "cursor-not-allowed opacity-50 bg-purple-600/30"
                 : "bg-purple-600/40 hover:bg-purple-600/50"
@@ -992,7 +1033,7 @@ export default function FerrofluidVisualizer() {
         ) : (
           <button
             onClick={stopMicrophone}
-            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
+            className="w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
           >
             <FaMicrophoneSlash className="drop-shadow-md text-xs sm:text-base" />
             <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
@@ -1006,7 +1047,7 @@ export default function FerrofluidVisualizer() {
           <button
             onClick={startSystemAudio}
             disabled={isPlayingFile || isRecording}
-            className={`px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+            className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
               isPlayingFile || isRecording
                 ? "cursor-not-allowed opacity-50 bg-green-600/30"
                 : "bg-green-600/40 hover:bg-green-600/50"
@@ -1020,7 +1061,7 @@ export default function FerrofluidVisualizer() {
         ) : (
           <button
             onClick={stopSystemAudio}
-            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
+            className="w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
           >
             <FaStop className="drop-shadow-md text-xs sm:text-base" />
             <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
@@ -1033,7 +1074,7 @@ export default function FerrofluidVisualizer() {
         {isPlayingFile && (
           <button
             onClick={stopAudioFile}
-            className="px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
+            className="w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-red-500/30 hover:bg-red-500/40 border border-red-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
           >
             <FaStop className="drop-shadow-md text-xs sm:text-base" />
             <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
@@ -1047,7 +1088,7 @@ export default function FerrofluidVisualizer() {
       {!isPiPActive ? (
         <button
           onClick={startPictureInPicture}
-          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
+          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
           title="Start Picture-in-Picture"
         >
           <FaExpand className="drop-shadow-md text-xs sm:text-base" />
@@ -1058,7 +1099,7 @@ export default function FerrofluidVisualizer() {
       ) : (
         <button
           onClick={stopPictureInPicture}
-          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 px-3 py-2 sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2"
+          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
           title="Stop Picture-in-Picture"
         >
           <FaCompress className="drop-shadow-md text-xs sm:text-base" />
