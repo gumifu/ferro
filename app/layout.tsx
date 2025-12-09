@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ferro-kappa.vercel.app"),
-  title: "ferro",
+  title: "ferro | Interactive Sound Visualizer",
   icons: {
     icon: [
       { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   manifest: "/site.webmanifest",
   description:
-    "Ferro is a floating ferrofluid-inspired sculpture that reacts to sound and motion. A calm companion for your workspace, creating gentle, organic visuals shaped by music and interaction.",
+    "An interactive ferrofluid-inspired sound visualizer that floats, reacts to music and motion, and creates calm, organic visuals that feel alive.",
   keywords: [
     "ferrofluid",
     "audio visualization",
