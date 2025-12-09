@@ -8,7 +8,7 @@ export default function Home() {
           Ferrofluid Visualizer
         </h1>
         <p className="text-gray-400 text-center mb-8">
-          磁性流体の3Dビジュアライゼーション
+          3D Visualization of Magnetic Fluid
         </p>
         <FerrofluidVisualizer />
       </div>

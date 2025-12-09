@@ -129,8 +129,10 @@ function createAnimatedGradientBackground(
 export default function FerrofluidVisualizer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const systemAudioStreamRef = useRef<MediaStream | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlayingFile, setIsPlayingFile] = useState(false);
+  const [isSystemAudio, setIsSystemAudio] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sceneRef = useRef<{
     scene: THREE.Scene;
@@ -550,6 +552,12 @@ export default function FerrofluidVisualizer() {
             URL.revokeObjectURL(audioRef.current.src);
           }
         }
+        // Clean up system audio stream
+        if (systemAudioStreamRef.current) {
+          systemAudioStreamRef.current.getTracks().forEach((track) => {
+            track.stop();
+          });
+        }
         if (
           containerElement &&
           containerElement.contains(sceneRef.current.renderer.domElement)
@@ -564,6 +572,15 @@ export default function FerrofluidVisualizer() {
   const startMicrophone = async () => {
     try {
       setError(null);
+
+      // Stop other audio sources
+      if (isPlayingFile) {
+        stopAudioFile();
+      }
+      if (isSystemAudio) {
+        stopSystemAudio();
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       if (!sceneRef.current) return;
@@ -577,7 +594,7 @@ export default function FerrofluidVisualizer() {
       const analyser = audioContext.createAnalyser();
 
       source.connect(analyser);
-      analyser.connect(audioContext.destination);
+      // analyser.connect(audioContext.destination);
       analyser.fftSize = 512;
 
       const bufferLength = analyser.frequencyBinCount;
@@ -590,7 +607,7 @@ export default function FerrofluidVisualizer() {
       setIsRecording(true);
     } catch (err) {
       setError(
-        "マイクへのアクセスが拒否されました。ブラウザの設定を確認してください。"
+        "Microphone access was denied. Please check your browser settings."
       );
       console.error("Error accessing microphone:", err);
     }
@@ -606,13 +623,92 @@ export default function FerrofluidVisualizer() {
     }
   };
 
+  const startSystemAudio = async () => {
+    try {
+      setError(null);
+
+      // Stop other audio sources
+      if (isRecording) {
+        stopMicrophone();
+      }
+      if (isPlayingFile) {
+        stopAudioFile();
+      }
+
+      // Request screen share with audio
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+
+      if (!sceneRef.current) return;
+
+      // Store stream reference for cleanup
+      systemAudioStreamRef.current = stream;
+
+      // Handle stream end (user stops sharing)
+      stream.getVideoTracks()[0].addEventListener("ended", () => {
+        stopSystemAudio();
+      });
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+
+      source.connect(analyser);
+      // Don't connect to destination to avoid double playback
+      // analyser.connect(audioContext.destination);
+      analyser.fftSize = 512;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      sceneRef.current.analyser = analyser;
+      sceneRef.current.audioContext = audioContext;
+      sceneRef.current.dataArray = dataArray;
+
+      setIsSystemAudio(true);
+    } catch (err) {
+      setError(
+        "Screen share audio access was denied. Please check your browser settings."
+      );
+      console.error("Error accessing system audio:", err);
+      setIsSystemAudio(false);
+    }
+  };
+
+  const stopSystemAudio = () => {
+    // Stop all tracks in the stream
+    if (systemAudioStreamRef.current) {
+      systemAudioStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      systemAudioStreamRef.current = null;
+    }
+
+    if (sceneRef.current?.audioContext) {
+      sceneRef.current.audioContext.close();
+      sceneRef.current.analyser = null;
+      sceneRef.current.audioContext = null;
+      sceneRef.current.dataArray = null;
+    }
+    setIsSystemAudio(false);
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Stop microphone if active
+    // Stop other audio sources
     if (isRecording) {
       stopMicrophone();
+    }
+    if (isSystemAudio) {
+      stopSystemAudio();
     }
 
     setError(null);
@@ -621,6 +717,9 @@ export default function FerrofluidVisualizer() {
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.src = URL.createObjectURL(file);
+    // Mute the audio element to avoid double playback
+    // Sound will only come from WebAudio destination
+    audio.muted = true;
 
     audioRef.current = audio;
 
@@ -650,7 +749,7 @@ export default function FerrofluidVisualizer() {
 
         setIsPlayingFile(true);
       } catch (err) {
-        setError("オーディオファイルの読み込みに失敗しました。");
+        setError("Failed to load audio file.");
         console.error("Error loading audio file:", err);
       }
     });
@@ -666,9 +765,7 @@ export default function FerrofluidVisualizer() {
 
     // Play audio
     audio.play().catch((err) => {
-      setError(
-        "オーディオの再生に失敗しました。ユーザーの操作が必要な場合があります。"
-      );
+      setError("Failed to play audio. User interaction may be required.");
       console.error("Error playing audio:", err);
     });
   };
@@ -703,7 +800,7 @@ export default function FerrofluidVisualizer() {
         className="w-full h-full"
         style={{ minHeight: "600px" }}
       />
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-4 items-center">
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-4 items-center flex-wrap justify-center">
         {/* File upload */}
         <label className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg transition-all cursor-pointer">
           <input
@@ -711,29 +808,52 @@ export default function FerrofluidVisualizer() {
             accept="audio/*"
             onChange={handleFileUpload}
             className="hidden"
+            disabled={isSystemAudio}
           />
-          {isPlayingFile ? "音楽を変更" : "音楽をアップロード"}
+          {isPlayingFile ? "Change Music" : "Upload Music"}
         </label>
 
         {/* Microphone button */}
         {!isRecording ? (
           <button
             onClick={startMicrophone}
-            disabled={isPlayingFile}
+            disabled={isPlayingFile || isSystemAudio}
             className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-all ${
-              isPlayingFile
+              isPlayingFile || isSystemAudio
                 ? "bg-gray-500 cursor-not-allowed"
                 : "bg-purple-600 hover:bg-purple-700"
             } text-white`}
           >
-            マイクを開始
+            Start Microphone
           </button>
         ) : (
           <button
             onClick={stopMicrophone}
             className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
           >
-            マイクを停止
+            Stop Microphone
+          </button>
+        )}
+
+        {/* System audio (screen share) button */}
+        {!isSystemAudio ? (
+          <button
+            onClick={startSystemAudio}
+            disabled={isPlayingFile || isRecording}
+            className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-all ${
+              isPlayingFile || isRecording
+                ? "bg-gray-500 cursor-not-allowed"
+                : "bg-green-600 hover:bg-green-700"
+            } text-white`}
+          >
+            Capture System Audio
+          </button>
+        ) : (
+          <button
+            onClick={stopSystemAudio}
+            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
+          >
+            Stop System Audio
           </button>
         )}
 
@@ -743,7 +863,7 @@ export default function FerrofluidVisualizer() {
             onClick={stopAudioFile}
             className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-all"
           >
-            停止
+            Stop
           </button>
         )}
       </div>
