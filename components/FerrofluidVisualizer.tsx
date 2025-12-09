@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createNoise3D } from "simplex-noise";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -310,8 +310,8 @@ export default function FerrofluidVisualizer() {
         pmremGenerator.dispose();
       },
       undefined,
-      (error) => {
-        console.log("HDRI not found, using default lighting:", error);
+      () => {
+        // Silently handle HDR file not found - it's optional
         // Continue without HDRI - existing lights will work
         pmremGenerator.dispose();
       }
@@ -760,6 +760,15 @@ export default function FerrofluidVisualizer() {
       sceneRef.current.dataArray = dataArray;
 
       setIsSystemAudio(true);
+
+      // Auto-start PiP when screen sharing starts
+      if (!isPiPActive && document.pictureInPictureEnabled) {
+        try {
+          await startPictureInPicture();
+        } catch {
+          // Silently fail - don't show error
+        }
+      }
     } catch (err) {
       // Silently handle errors on mobile - system audio is often not supported
       console.error("Error accessing system audio:", err);
@@ -796,7 +805,7 @@ export default function FerrofluidVisualizer() {
     setIsSystemAudio(false);
   };
 
-  const startPictureInPicture = async () => {
+  const startPictureInPicture = useCallback(async () => {
     if (!sceneRef.current?.renderer?.domElement) {
       setError("Canvas not available for Picture-in-Picture");
       return;
@@ -880,7 +889,30 @@ export default function FerrofluidVisualizer() {
 
       // Don't show error message to user - fail silently
     }
-  };
+  }, []);
+
+  // Auto-start PiP when user leaves the page/tab
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      // If page becomes hidden and PiP is not already active, start PiP
+      if (document.hidden && !isPiPActive) {
+        // Check if PiP is supported
+        if (document.pictureInPictureEnabled) {
+          try {
+            await startPictureInPicture();
+          } catch {
+            // Silently fail - don't show error
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isPiPActive, startPictureInPicture]);
 
   const stopPictureInPicture = async () => {
     if (document.pictureInPictureElement) {
@@ -1055,20 +1087,28 @@ export default function FerrofluidVisualizer() {
 
         {/* System audio button */}
         {!isSystemAudio ? (
-          <button
-            onClick={startSystemAudio}
-            disabled={isPlayingFile || isRecording}
-            className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
-              isPlayingFile || isRecording
-                ? "cursor-not-allowed opacity-50 bg-green-600/30"
-                : "bg-green-600/40 hover:bg-green-600/50"
-            } text-white drop-shadow-lg`}
-          >
-            <FaDesktop className="drop-shadow-md text-xs sm:text-base" />
-            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
-              System
-            </span>
-          </button>
+          <div className="relative group">
+            <button
+              onClick={startSystemAudio}
+              disabled={isPlayingFile || isRecording}
+              className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+                isPlayingFile || isRecording
+                  ? "cursor-not-allowed opacity-50 bg-green-600/30"
+                  : "bg-green-600/40 hover:bg-green-600/50"
+              } text-white drop-shadow-lg`}
+            >
+              <FaDesktop className="drop-shadow-md text-xs sm:text-base" />
+              <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+                System
+              </span>
+            </button>
+            {/* Tooltip */}
+            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 backdrop-blur-sm">
+              Please select a tab with active audio.
+              {/* Arrow pointing up to the button */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-0 border-4 border-transparent border-b-black/80"></div>
+            </div>
+          </div>
         ) : (
           <button
             onClick={stopSystemAudio}
