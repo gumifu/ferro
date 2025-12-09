@@ -241,18 +241,30 @@ export default function FerrofluidVisualizer() {
     // Use SphereGeometry instead of IcosahedronGeometry for smooth appearance
     const ballGeometry = new THREE.SphereGeometry(10, 128, 128);
 
-    // Create glossy black ferrofluid material
     const ferrofluidMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x000000, // Pure black
-      metalness: 1.0, // Maximum metallic
-      roughness: 0.1, // Very smooth/glossy
-      clearcoat: 1.0, // Clear coat for extra shine
-      clearcoatRoughness: 0.05, // Very smooth clear coat
-      reflectivity: 1.0, // High reflectivity
-      emissive: 0x000000,
-      emissiveIntensity: 0,
+      // Black-gray color for better visibility of mouse interaction
+      color: 0xb3b3b3, // Dark gray instead of pure black
+      metalness: 0.9,
+      roughness: 0.22,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.08,
+      reflectivity: 0.9,
+      // Slight emissive to prevent pure black
+      emissive: 0x0a0a0a,
+      emissiveIntensity: 0.1,
       side: THREE.DoubleSide,
     });
+    // const ferrofluidMaterial = new THREE.MeshPhysicalMaterial({
+    //   color: 0xffffff, // 少し明るめのグレー
+    //   metalness: 0.25, // ★ 0.9 → 0.25 に大きく下げる
+    //   roughness: 0.35, // 表面のテカりを少し柔らかく
+    //   clearcoat: 0.8, // コートは少しだけ
+    //   clearcoatRoughness: 0.2,
+    //   reflectivity: 0.6, // 反射も少し控えめ
+    //   emissive: 0x101010, // 薄く自発光
+    //   emissiveIntensity: 0.25,
+    //   side: THREE.DoubleSide,
+    // });
 
     const ball = new THREE.Mesh(ballGeometry, ferrofluidMaterial);
     ball.position.set(0, 0, 0);
@@ -293,6 +305,8 @@ export default function FerrofluidVisualizer() {
     // Mouse position for magnetic attraction
     const mousePosition = new THREE.Vector3(0, 0, 0);
     const mouseActiveRef = { value: false };
+    // ★ 追加：何もしていないときに下へ引っぱる“デフォルト磁石”
+    const defaultMagnet = new THREE.Vector3(0, -15, 0);
 
     sceneRef.current = {
       scene,
@@ -357,8 +371,8 @@ export default function FerrofluidVisualizer() {
       const time = window.performance.now();
 
       // Magnetic attraction parameters
-      const magnetStrength = 15.0; // Strength of magnetic pull
-      const magnetRange = 30.0; // Range of magnetic influence
+      const magnetStrength = 40.0; // Strength of magnetic pull
+      const magnetRange = 60.0; // Range of magnetic influence
 
       for (let i = 0; i < vertices.count; i++) {
         const x = vertices.getX(i);
