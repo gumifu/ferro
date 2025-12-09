@@ -695,10 +695,9 @@ export default function FerrofluidVisualizer() {
 
       setIsRecording(true);
     } catch (err) {
-      setError(
-        "Microphone access was denied. Please check your browser settings."
-      );
+      // Silently handle errors - don't show error message
       console.error("Error accessing microphone:", err);
+      setIsRecording(false);
     }
   };
 
@@ -762,11 +761,20 @@ export default function FerrofluidVisualizer() {
 
       setIsSystemAudio(true);
     } catch (err) {
-      setError(
-        "Screen share audio access was denied. Please check your browser settings."
-      );
+      // Silently handle errors on mobile - system audio is often not supported
       console.error("Error accessing system audio:", err);
       setIsSystemAudio(false);
+
+      // Only show error on desktop, not on mobile
+      if (window.innerWidth >= 768) {
+        setError(
+          "Screen share audio access was denied. Please check your browser settings."
+        );
+        // Auto-clear error after 3 seconds
+        setTimeout(() => {
+          setError(null);
+        }, 3000);
+      }
     }
   };
 
@@ -945,13 +953,15 @@ export default function FerrofluidVisualizer() {
 
         setIsPlayingFile(true);
       } catch (err) {
-        setError("Failed to load audio file.");
+        // Silently handle errors - don't show error message
         console.error("Error loading audio file:", err);
+        setIsPlayingFile(false);
       }
     });
 
     audio.addEventListener("error", () => {
-      setError("オーディオファイルの読み込みに失敗しました。");
+      // Silently handle errors - don't show error message
+      console.error("Error loading audio file");
       setIsPlayingFile(false);
     });
 
@@ -961,8 +971,9 @@ export default function FerrofluidVisualizer() {
 
     // Play audio
     audio.play().catch((err) => {
-      setError("Failed to play audio. User interaction may be required.");
+      // Silently handle errors - don't show error message
       console.error("Error playing audio:", err);
+      setIsPlayingFile(false);
     });
   };
 
