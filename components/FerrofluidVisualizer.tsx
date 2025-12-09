@@ -305,8 +305,6 @@ export default function FerrofluidVisualizer() {
     // Mouse position for magnetic attraction
     const mousePosition = new THREE.Vector3(0, 0, 0);
     const mouseActiveRef = { value: false };
-    // ★ 追加：何もしていないときに下へ引っぱる“デフォルト磁石”
-    const defaultMagnet = new THREE.Vector3(0, -15, 0);
 
     sceneRef.current = {
       scene,
@@ -358,6 +356,15 @@ export default function FerrofluidVisualizer() {
     containerElement.addEventListener("mousemove", handleMouseMove);
     containerElement.addEventListener("mouseleave", handleMouseLeave);
 
+    // Direction vector for single spike pointing at 8 o'clock
+    // 8 o'clock is 30 degrees counterclockwise from downward (6 o'clock)
+    const SPIKE_DIR = new THREE.Vector3(
+      -Math.sin(Math.PI / 6), // x: -0.5 (left)
+      -Math.cos(Math.PI / 6), // y: -√3/2 ≈ -0.866 (downward)
+      0 // z: 0
+    ).normalize();
+    const TMP_NORMAL = new THREE.Vector3(); // Reusable vector
+
     // Make rough ball function with magnetic mouse attraction
     const makeRoughBall = (
       mesh: THREE.Mesh,
@@ -365,6 +372,7 @@ export default function FerrofluidVisualizer() {
       treFr: number,
       mousePos: THREE.Vector3,
       mouseActive: boolean
+      // spikeAngle: number
     ) => {
       const geometry = mesh.geometry as THREE.SphereGeometry;
       const vertices = geometry.attributes.position as THREE.BufferAttribute;
@@ -420,6 +428,18 @@ export default function FerrofluidVisualizer() {
               Math.max(0, pullDirection.dot(new THREE.Vector3(nx, ny, nz)));
           }
         }
+
+        // --- Add single downward spike ---
+        TMP_NORMAL.set(nx, ny, nz);
+        // How aligned with spikeDir (closer to 1 = more downward)
+        const alignment = Math.max(0, TMP_NORMAL.dot(SPIKE_DIR));
+        // Spike sharpness and height
+        const spikeSharpness = 300.0; // Larger = sharper, more localized
+        const spikeHeight = 2.5; // Spike length (adjust to preference)
+        // alignment^sharpness to focus on almost one point
+        const spikeFactor = Math.pow(alignment, spikeSharpness);
+        // Add spike to radius
+        distance += spikeHeight * spikeFactor;
 
         vertices.setXYZ(i, nx * distance, ny * distance, nz * distance);
       }
