@@ -1037,42 +1037,58 @@ export default function FerrofluidVisualizer() {
       {/* Simple control panel - Center */}
       <div className="absolute bottom-3 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex gap-2 sm:gap-3 items-center flex-wrap justify-center max-w-[calc(100%-8rem)] sm:max-w-none">
         {/* File upload */}
-        <label
-          className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
-            isSystemAudio
-              ? "cursor-not-allowed opacity-50 bg-blue-600/30"
-              : "bg-blue-600/40 hover:bg-blue-600/50"
-          } text-white drop-shadow-lg`}
-        >
-          <input
-            type="file"
-            accept="audio/*"
-            onChange={handleFileUpload}
-            className="hidden"
-            disabled={isSystemAudio}
-          />
-          <FaUpload className="drop-shadow-md text-xs sm:text-base" />
-          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
-            {isPlayingFile ? "Change" : "Upload"}
-          </span>
-        </label>
+        <div className="relative group">
+          <label
+            className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+              isSystemAudio
+                ? "cursor-not-allowed opacity-50 bg-blue-600/30"
+                : "bg-blue-600/40 hover:bg-blue-600/50"
+            } text-white drop-shadow-lg`}
+          >
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={isSystemAudio}
+            />
+            <FaUpload className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              {isPlayingFile ? "Change" : "Upload"}
+            </span>
+          </label>
+          {/* Tooltip */}
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 ease-out pointer-events-none z-50 backdrop-blur-sm">
+            Upload audio file to visualize
+            {/* Arrow pointing down to the button */}
+            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-black/80"></div>
+          </div>
+        </div>
 
         {/* Microphone button */}
         {!isRecording ? (
-          <button
-            onClick={startMicrophone}
-            disabled={isPlayingFile || isSystemAudio}
-            className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
-              isPlayingFile || isSystemAudio
-                ? "cursor-not-allowed opacity-50 bg-purple-600/30"
-                : "bg-purple-600/40 hover:bg-purple-600/50"
-            } text-white drop-shadow-lg`}
-          >
-            <FaMicrophone className="drop-shadow-md text-xs sm:text-base" />
-            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
-              Mic
-            </span>
-          </button>
+          <div className="relative group">
+            <button
+              onClick={startMicrophone}
+              disabled={isPlayingFile || isSystemAudio}
+              className={`w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 backdrop-blur-md border border-white/20 ${
+                isPlayingFile || isSystemAudio
+                  ? "cursor-not-allowed opacity-50 bg-purple-600/30"
+                  : "bg-purple-600/40 hover:bg-purple-600/50"
+              } text-white drop-shadow-lg`}
+            >
+              <FaMicrophone className="drop-shadow-md text-xs sm:text-base" />
+              <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+                Mic
+              </span>
+            </button>
+            {/* Tooltip */}
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 ease-out pointer-events-none z-50 backdrop-blur-sm">
+              Moves with sound. Enable microphone permission.
+              {/* Arrow pointing down to the button */}
+              <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-black/80"></div>
+            </div>
+          </div>
         ) : (
           <button
             onClick={stopMicrophone}
@@ -1103,10 +1119,10 @@ export default function FerrofluidVisualizer() {
               </span>
             </button>
             {/* Tooltip */}
-            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 backdrop-blur-sm">
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 ease-out pointer-events-none z-50 backdrop-blur-sm">
               Please select a tab with active audio.
-              {/* Arrow pointing up to the button */}
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-0 border-4 border-transparent border-b-black/80"></div>
+              {/* Arrow pointing down to the button */}
+              <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-black/80"></div>
             </div>
           </div>
         ) : (
@@ -1137,27 +1153,41 @@ export default function FerrofluidVisualizer() {
 
       {/* Picture-in-Picture button - Right side */}
       {!isPiPActive ? (
-        <button
-          onClick={startPictureInPicture}
-          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
-          title="Start Picture-in-Picture"
-        >
-          <FaExpand className="drop-shadow-md text-xs sm:text-base" />
-          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
-            PiP
-          </span>
-        </button>
+        <div className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 group">
+          <button
+            onClick={startPictureInPicture}
+            className="w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-600/40 hover:bg-indigo-600/50 border border-white/20 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
+          >
+            <FaExpand className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              PiP
+            </span>
+          </button>
+          {/* Tooltip */}
+          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 ease-out pointer-events-none z-50 backdrop-blur-sm">
+            Open in floating window
+            {/* Arrow pointing down to the button */}
+            <div className="absolute top-full right-4 transform border-4 border-transparent border-t-black/80"></div>
+          </div>
+        </div>
       ) : (
-        <button
-          onClick={stopPictureInPicture}
-          className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
-          title="Stop Picture-in-Picture"
-        >
-          <FaCompress className="drop-shadow-md text-xs sm:text-base" />
-          <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
-            Exit
-          </span>
-        </button>
+        <div className="absolute bottom-3 sm:bottom-6 right-3 sm:right-6 z-10 group">
+          <button
+            onClick={stopPictureInPicture}
+            className="w-11 h-11 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full backdrop-blur-md bg-indigo-500/30 hover:bg-indigo-500/40 border border-indigo-400/30 text-white drop-shadow-lg shadow-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2"
+          >
+            <FaCompress className="drop-shadow-md text-xs sm:text-base" />
+            <span className="text-xs sm:text-sm font-semibold drop-shadow-md hidden sm:inline">
+              Exit
+            </span>
+          </button>
+          {/* Tooltip */}
+          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-black/80 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 ease-out pointer-events-none z-50 backdrop-blur-sm">
+            Close floating window
+            {/* Arrow pointing down to the button */}
+            <div className="absolute top-full right-4 transform border-4 border-transparent border-t-black/80"></div>
+          </div>
+        </div>
       )}
 
       {/* Error message */}
