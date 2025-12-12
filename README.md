@@ -67,9 +67,14 @@ ferro-visualize/
 ├── app/
 │   └── page.tsx              # メインページ
 ├── components/
-│   ├── AudioControls.tsx     # 音声入力コントロール
-│   ├── Scene.tsx             # Three.js シーン
-│   └── FerroObject.tsx       # ferro オブジェクト
+│   ├── controls/
+│   │   └── AudioControls.tsx     # 音声入力コントロール
+│   ├── three/
+│   │   ├── FerroObject.tsx       # ferro オブジェクト
+│   │   └── Scene.tsx             # Three.js シーン
+│   └── visualizer/
+│       ├── FerrofluidVisualizer.tsx # メインのビジュアライザー
+│       └── ReflectionDisplay.tsx    # リフレクション表示
 ├── lib/
 │   ├── audio/
 │   │   └── AudioInputModule.ts  # 音声入力・解析
