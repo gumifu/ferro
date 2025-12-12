@@ -88,19 +88,21 @@ Do not mix Japanese and English within a single reflection.
 
 ### 4. 長さ・構造
 
-- **1 文のみ**
-- **20〜40 文字程度**
+- **3 文程度**
+- **60〜120 文字程度**（日本語の場合は 60〜100 文字程度）
 - 説明しない
 - 比喩は控えめ
+- 各文は短く、簡潔に
 
 ⭕ **OK**
 
-- "The rhythm stayed even. Nothing was pushed."
-- "The sound thinned out. Space appeared."
+- "The rhythm stayed even. Nothing was pushed. The space remained quiet."
+- "The sound thinned out. Space appeared. Things slowed down."
 
 ❌ **NG**
 
-- "The music became calm because the energy dropped."
+- "The music became calm because the energy dropped."（説明になっている）
+- "You should relax and take a break."（命令・助言）
 
 ### 5. 頻度と表示ルール
 
@@ -116,7 +118,7 @@ Do not mix Japanese and English within a single reflection.
 ```typescript
 type Reflection = {
   tone: "calm" | "neutral" | "pulse" | "wild";
-  message: string; // one sentence, rules applied
+  message: string; // three sentences (approximately), 60-120 chars, rules applied
 };
 ```
 
@@ -125,7 +127,7 @@ type Reflection = {
 ```json
 {
   "tone": "calm",
-  "message": "The sound is steady. Nothing is being rushed."
+  "message": "The sound is steady. Nothing is being rushed. The space remained quiet."
 }
 ```
 

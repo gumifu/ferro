@@ -65,7 +65,7 @@ export type WorldTarget = {
 
 ## バリデーション関数例
 
-```typescript
+````typescript
 function clampWorldTarget(target: WorldTarget): WorldTarget {
   return {
     ...target,
@@ -105,4 +105,45 @@ function clampWorldTarget(target: WorldTarget): WorldTarget {
     },
   };
 }
-```
+
+## Reflection バリデーション関数
+
+```typescript
+import type { Reflection } from "@/lib/types/reflection";
+
+function validateReflection(reflection: Reflection, uiLanguage: "en" | "ja"): Reflection {
+  // Check message length (warnings only, allow flexibility)
+  const charCount = reflection.message.length;
+  const recommendedMinChars = uiLanguage === "ja" ? 40 : 60;
+  const recommendedMaxChars = uiLanguage === "ja" ? 100 : 120; // Japanese chars are typically wider
+
+  if (charCount < recommendedMinChars) {
+    console.warn(
+      `[Reflection] Warning: Message is shorter than recommended (${charCount} chars, recommended min ${recommendedMinChars})`
+    );
+  }
+  if (charCount > recommendedMaxChars) {
+    console.warn(
+      `[Reflection] Warning: Message is longer than recommended (${charCount} chars, recommended max ${recommendedMaxChars})`
+    );
+  }
+
+  // Check for forbidden words (warning only, don't reject)
+  const forbiddenWords = ["I ", "You ", "We ", "ferro", "should", "need to", "try to"];
+  const found = forbiddenWords.find((word) => reflection.message.includes(word));
+  if (found) {
+    console.warn(`[Reflection] Warning: Message contains forbidden word: ${found}`);
+  }
+
+  // Clamp tone to valid values
+  const validTones: Reflection["tone"][] = ["calm", "neutral", "pulse", "wild"];
+  const tone = validTones.includes(reflection.tone)
+    ? reflection.tone
+    : "neutral";
+
+  return {
+    tone,
+    message: reflection.message.trim(),
+  };
+}
+````

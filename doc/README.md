@@ -32,7 +32,7 @@ Reflection 言語ルール。AI が生成する Reflection メッセージの文
 
 ### 実装の流れ
 
-1. Sprint 1: 背景システムと PostFX（AI なし）
+1. Sprint 1: 背景システムと PostFX
 2. Sprint 2: 色変更と meshOnly モード
 3. Sprint 3: AI 導入と TransitionEngine
 4. Sprint 4: 重力/磁力効果

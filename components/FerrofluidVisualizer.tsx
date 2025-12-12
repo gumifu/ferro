@@ -7,7 +7,10 @@ import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { parseBlob } from "music-metadata";
 import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
 import { AIPlannerModule } from "@/lib/ai/AIPlannerModule";
+import { ReflectionModule } from "@/lib/ai/ReflectionModule";
 import type { AudioFrame } from "@/lib/types";
+import type { Reflection, AudioSummary } from "@/lib/types/reflection";
+import { ReflectionDisplay } from "./ReflectionDisplay";
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -210,6 +213,7 @@ export default function FerrofluidVisualizer() {
 
   // AI機能関連
   const aiPlannerRef = useRef<AIPlannerModule | null>(null);
+  const reflectionModuleRef = useRef<ReflectionModule | null>(null);
   const [userMoodText, setUserMoodText] = useState("");
   const [enableAITimeline, setEnableAITimeline] = useState(false);
   const enableAITimelineRef = useRef(false); // render関数内で最新値を参照するため
@@ -219,6 +223,12 @@ export default function FerrofluidVisualizer() {
     error: aiError,
   } = useAIPlanStore();
   const aiPlanRef = useRef(aiPlan); // render関数内で最新値を参照するため
+
+  // Reflection state
+  const [currentReflection, setCurrentReflection] = useState<Reflection | null>(
+    null
+  );
+  const [isGeneratingReflection, setIsGeneratingReflection] = useState(false);
 
   // aiPlanが変更されたらrefを更新
   useEffect(() => {
@@ -2283,6 +2293,105 @@ export default function FerrofluidVisualizer() {
     setIsPlayingFile(false);
   };
 
+  // AudioSummaryを作成する関数（Reflection生成用）
+  const createAudioSummary = (): AudioSummary | null => {
+    if (timelineFramesRef.current.length === 0) {
+      return null;
+    }
+
+    const frames = timelineFramesRef.current;
+    const duration = frames[frames.length - 1]?.time || 0;
+
+    // 統計を計算
+    let sumRms = 0;
+    let maxRms = 0;
+    let sumBass = 0;
+    let sumMid = 0;
+    let sumTreble = 0;
+    let sumFlux = 0;
+
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      sumRms += frame.volumeRms;
+      maxRms = Math.max(maxRms, frame.volumeRms);
+      sumBass += frame.bass;
+      sumTreble += frame.treble;
+
+      // Midはbassとtrebleの中間として近似
+      sumMid += (frame.bass + frame.treble) / 2;
+
+      // Flux: 前フレームとの差分
+      if (i > 0) {
+        const prevFrame = frames[i - 1];
+        const rmsDiff = Math.abs(frame.volumeRms - prevFrame.volumeRms);
+        sumFlux += rmsDiff;
+      }
+    }
+
+    const avgRms = sumRms / frames.length;
+    const avgBass = sumBass / frames.length;
+    const avgMid = sumMid / frames.length;
+    const avgTreble = sumTreble / frames.length;
+    const flux = frames.length > 1 ? sumFlux / (frames.length - 1) : 0;
+
+    // UI言語を判定（userMoodTextから推測、デフォルトは英語）
+    const uiLanguage: "en" | "ja" =
+      userMoodText &&
+      /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(userMoodText)
+        ? "ja"
+        : "en";
+
+    return {
+      duration,
+      avgRms,
+      maxRms,
+      avgBass,
+      avgMid,
+      avgTreble,
+      flux,
+      userMoodText: userMoodText || undefined,
+      uiLanguage,
+    };
+  };
+
+  // Reflectionを生成する関数（スタブ実装）
+  const generateReflection = async () => {
+    const summary = createAudioSummary();
+    if (!summary) {
+      console.warn(
+        "[FerrofluidVisualizer] Cannot generate reflection: no audio summary"
+      );
+      return;
+    }
+
+    if (!reflectionModuleRef.current) {
+      reflectionModuleRef.current = new ReflectionModule();
+    }
+
+    if (!reflectionModuleRef.current.isAvailable()) {
+      console.warn(
+        "[FerrofluidVisualizer] ReflectionModule is not available (no API key)"
+      );
+      return;
+    }
+
+    setIsGeneratingReflection(true);
+    try {
+      const reflection = await reflectionModuleRef.current.generateReflection(
+        summary
+      );
+      console.log("[FerrofluidVisualizer] Reflection generated:", reflection);
+      setCurrentReflection(reflection);
+    } catch (error) {
+      console.error(
+        "[FerrofluidVisualizer] Error generating reflection:",
+        error
+      );
+    } finally {
+      setIsGeneratingReflection(false);
+    }
+  };
+
   // AIプランを生成する関数
   const generateAIPlanFromTimeline = async () => {
     console.log("[FerrofluidVisualizer] generateAIPlanFromTimeline called");
@@ -2541,6 +2650,9 @@ export default function FerrofluidVisualizer() {
         </div>
       )}
 
+      {/* Reflection Display */}
+      <ReflectionDisplay reflection={currentReflection} />
+
       {/* Error message */}
       {error && (
         <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 bg-red-600/90 text-white px-4 py-2 rounded-lg text-sm shadow-lg">
@@ -2628,6 +2740,19 @@ export default function FerrofluidVisualizer() {
             ? "Please collect timeline first"
             : `Generate AI Plan (${timelineFrameCount} frames)`}
         </button>
+
+        {/* Reflection Test Button (Stub) */}
+        {timelineFrameCount > 0 && (
+          <button
+            onClick={generateReflection}
+            className="w-full mt-2 px-4 py-2 bg-purple-600/40 hover:bg-purple-600/50 text-white rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            disabled={isGeneratingReflection || timelineFrameCount === 0}
+          >
+            {isGeneratingReflection
+              ? "Generating Reflection..."
+              : "Generate Reflection (Test)"}
+          </button>
+        )}
 
         {/* Timeline Info */}
         {enableAITimeline && (
