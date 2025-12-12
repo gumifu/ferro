@@ -18,7 +18,7 @@ const FerroAnimationSectionSchema = z.object({
 
 const FerroAnimationPlanSchema = z.object({
   overallMood: z.string(),
-  explanation: z.string().optional(), // AIが選んだカラーやパラメータの理由を説明
+  explanation: z.string().optional(), // Moodを選んだ理由（音楽の特徴に基づく説明）
   encouragement: z.string().optional(), // ユーザーへの励ましメッセージ
   global: z.object({
     baseEnergy: z.number().min(0).max(1),
@@ -87,13 +87,22 @@ Your job:
   - overall mood description
   - 3-6 time sections (intro, build, peak, outro, etc.)
   - parameters for each section that control motion and colors.
-- Provide a thoughtful explanation (2-4 sentences) of why you chose the colors and parameters based on the music and user's mood. Match the language of the user's input (if English, respond in English; if Japanese, respond in Japanese).
-- Provide an encouraging message (1-2 sentences) to the user, matching their language. Be warm, supportive, and natural. Examples: "Keep pushing forward, you've got this!" or "Great work today, take care!" for English; "あともう一踏ん張り頑張ってね！" or "今日もお疲れ様" for Japanese.
+- Provide TWO separate messages:
+  1. "explanation" (1-2 sentences): Explain why you chose the overall mood based on the music characteristics (low bass strength, calm volume changes, etc.). Focus on the mood selection reason, not on "accompanying the user's feelings". Match the language of the user's input (if English, respond in English; if Japanese, respond in Japanese). IMPORTANT: Never use phrases like "あなたの気持ちに寄り添うためには" (to accompany your feelings) or "ユーザー" (user) in Japanese - always use "あなた" (you) instead. Keep it technical and objective about the music analysis.
+  2. "encouragement" (2-4 sentences): Provide an encouraging message to the listener, matching their language. The message should adapt to the listener's emotional state (joy, anger, sadness, excitement, etc.) while maintaining variety and avoiding monotony. Be warm, supportive, and natural. Expand on the listener's situation, acknowledge their feelings authentically, and offer genuine encouragement that matches their emotional tone. IMPORTANT: Never use the word "ユーザー" (user) in Japanese messages - always use "あなた" (you) instead.
+  - For joy/happiness: Celebrate with them, acknowledge their positive energy
+  - For sadness/melancholy: Offer comfort and understanding, validate their feelings
+  - For anger/frustration: Acknowledge their feelings, suggest calm and perspective
+  - For excitement/energy: Match their energy, encourage their enthusiasm
+  - For calm/peace: Appreciate the moment, encourage mindfulness
+  - Vary the tone and approach to avoid repetition - each message should feel fresh and personalized.
 
 Constraints:
 - Keep motion parameters subtle enough for a calm, relaxing experience.
-- The explanation and encouragement should match the user's language and be warm and supportive.
+- The explanation should focus on WHY the mood was chosen based on music analysis, NOT on "accompanying user's feelings".
+- The encouragement should match the user's language and be warm and supportive.
 - Make the messages feel natural and personalized based on the music and user's mood.
+- NEVER use phrases like "あなたの気持ちに寄り添うためには" (to accompany your feelings) in the explanation.
 - Respond ONLY with valid JSON following the schema I will provide.`;
 
       const userPrompt = `Here is the audio timeline and the optional user mood text.
@@ -108,8 +117,8 @@ Please respond ONLY with JSON following this schema:
 
 {
   "overallMood": string,
-  "explanation": string,        // 2-4 sentences explaining why you chose these colors and parameters based on the music and user's mood. Match the user's language (English or Japanese).
-  "encouragement": string,      // 1-2 sentences of encouraging message to the user. Match the user's language and be warm and supportive.
+  "explanation": string,        // 1-2 sentences explaining why you chose the overall mood based on music characteristics (e.g., "低音の強さと穏やかなボリュームの変化に基づいて、落ち着いた青と緑の色合いを選びました"). Focus on mood selection reason, NOT on "accompanying user's feelings". Match the user's language (English or Japanese). IMPORTANT: Never use phrases like "あなたの気持ちに寄り添うためには" or "ユーザー" (user) in Japanese - always use "あなた" (you) instead. Keep it technical and objective.
+  "encouragement": string,      // 2-4 sentences of encouraging message to the listener. Match the user's language and adapt to their emotional state (joy, anger, sadness, excitement, etc.) while maintaining variety. Be warm, supportive, and detailed. Expand on the listener's situation, acknowledge their feelings authentically, and offer genuine encouragement that matches their emotional tone. Avoid monotony - vary the tone and approach. IMPORTANT: Never use "ユーザー" (user) in Japanese - always use "あなた" (you).
   "global": {
     "baseEnergy": number,        // 0-1
     "baseTension": number,       // 0-1

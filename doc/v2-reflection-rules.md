@@ -118,15 +118,22 @@ Do not mix Japanese and English within a single reflection.
 ```typescript
 type Reflection = {
   tone: "calm" | "neutral" | "pulse" | "wild";
-  message: string; // three sentences (approximately), 60-120 chars, rules applied
+  reason: string; // 選定理由: なぜこのtoneが選ばれたかの説明（1-2文、技術的な説明可）
+  message: string; // three sentences (approximately), 60-120 chars, rules applied - 実際に表示されるreflection
 };
 ```
+
+### reason と message の違い
+
+- **reason**: 選定理由。なぜこの tone が選ばれたかの説明（技術的な説明、内部的な理由）。v2-reflection-rules.md のルールは適用されない。
+- **message**: 実際にユーザーに表示される reflection。v2-reflection-rules.md のすべてのルールが適用される。
 
 ### 例（良い）
 
 ```json
 {
   "tone": "calm",
+  "reason": "The audio shows low flux and steady RMS, indicating a calm state.",
   "message": "The sound is steady. Nothing is being rushed. The space remained quiet."
 }
 ```

@@ -5,6 +5,7 @@ import type { Reflection, AudioSummary } from "@/lib/types/reflection";
 // Zod schema for Reflection validation
 const ReflectionSchema = z.object({
   tone: z.enum(["calm", "neutral", "pulse", "wild"]),
+  reason: z.string().min(10), // 選定理由: なぜこのtoneが選ばれたかの説明
   message: z.string().min(20).max(150), // 60-120 chars recommended, but allow some margin for validation
 });
 
@@ -76,7 +77,7 @@ export class ReflectionModule {
       } catch (error) {
         // If validation fails, log and try to fix
         console.warn("[ReflectionModule] Zod validation failed, attempting to fix:", error);
-        const parsed = jsonData as { tone?: string; message?: string };
+        const parsed = jsonData as { tone?: string; reason?: string; message?: string };
         if (!parsed.message || parsed.message.length < 20) {
           throw new Error(
             `Reflection message is too short (${parsed.message?.length || 0} chars, minimum 20)`
@@ -84,6 +85,7 @@ export class ReflectionModule {
         }
         validatedReflection = {
           tone: (parsed.tone as Reflection["tone"]) || "neutral",
+          reason: parsed.reason || "",
           message: parsed.message || "",
         };
       }
@@ -144,10 +146,15 @@ CRITICAL RULES (ABSOLUTE):
 
 The reflection is not guidance. It leaves space for interpretation.
 
+IMPORTANT: You must return TWO separate fields:
+1. "reason": A brief explanation (1-2 sentences) of why this tone was selected based on the audio characteristics. This is for internal understanding and can be more technical/explanatory.
+2. "message": The actual reflection message that will be displayed to the user. This MUST follow all the rules above (no "I"/"You", no commands, state-based language, etc.).
+
 Return ONLY this JSON structure:
 {
   "tone": "calm" | "neutral" | "pulse" | "wild",
-  "message": "three sentences (approximately) following all rules above"
+  "reason": "brief explanation of why this tone was selected (1-2 sentences, can be technical)",
+  "message": "three sentences (approximately) following all rules above - this is what users will see"
 }`;
 
     return basePrompt;
@@ -168,10 +175,11 @@ AUDIO SUMMARY:
 - Change rate (flux): ${summary.flux.toFixed(2)}
 ${summary.userMoodText ? `- User mood: ${summary.userMoodText}` : ""}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with TWO fields:
 {
   "tone": "calm" | "neutral" | "pulse" | "wild",
-  "message": "three sentences (approximately) in ${lang}, following all language rules. Minimum length: ${summary.uiLanguage === "en" ? "60" : "40"} characters. Maximum length: ${summary.uiLanguage === "en" ? "120" : "100"} characters."
+  "reason": "brief explanation (1-2 sentences in ${lang}) of why this tone was selected based on the audio characteristics. This can be technical/explanatory.",
+  "message": "three sentences (approximately) in ${lang}, following all language rules. Minimum length: ${summary.uiLanguage === "en" ? "60" : "40"} characters. Maximum length: ${summary.uiLanguage === "en" ? "120" : "100"} characters. This is what users will see."
 }`;
   }
 
@@ -210,8 +218,10 @@ Return ONLY valid JSON:
 
     return {
       tone,
+      reason: reflection.reason?.trim() || "",
       message: reflection.message.trim(),
     };
   }
 }
+
 

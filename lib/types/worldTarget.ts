@@ -1,19 +1,11 @@
-# ferro v2 API 型定義
+// WorldTarget type definition for v2
+// See doc/v2-api-types.md for full specification
 
-## WorldTarget 型（AI 出力フォーマット）
+import type { Reflection } from "./reflection";
 
-### TypeScript 型定義
-
-```typescript
-type RenderMode = "meshOnly" | "full";
-type Mood = "calm" | "flow" | "pulse" | "wild";
-type BgStyle = "SoftGradient" | "Mist" | "DeepSpace" | "GlowField";
-
-export type Reflection = {
-  tone: "calm" | "neutral" | "pulse" | "wild";
-  reason: string; // 選定理由: なぜこのtoneが選ばれたかの説明（1-2文、技術的な説明可）
-  message: string; // one sentence, rules applied (see v2-reflection-rules.md) - 実際に表示されるreflection
-};
+export type RenderMode = "meshOnly" | "full";
+export type Mood = "calm" | "flow" | "pulse" | "wild";
+export type BgStyle = "SoftGradient" | "Mist" | "DeepSpace" | "GlowField";
 
 export type WorldTarget = {
   version: "v2";
@@ -56,18 +48,12 @@ export type WorldTarget = {
     grainAmount: number; // 0..0.35
   };
 };
-```
 
-## 制約（Three 側で必ず Clamp）
-
-- 彩度・Bloom・Grain・Fog には上限を設ける
-- `transitionSeconds`は最低 5 秒
-- `renderMode=meshOnly`のときは背景/FX の上限をさらに下げる
-
-## バリデーション関数例
-
-````typescript
-function clampWorldTarget(target: WorldTarget): WorldTarget {
+/**
+ * Clamp WorldTarget values to valid ranges
+ * See doc/v2-api-types.md for constraints
+ */
+export function clampWorldTarget(target: WorldTarget): WorldTarget {
   return {
     ...target,
     transitionSeconds: Math.max(5, Math.min(20, target.transitionSeconds)),
@@ -88,10 +74,7 @@ function clampWorldTarget(target: WorldTarget): WorldTarget {
     },
     background: {
       ...target.background,
-      bgNoiseAmount: Math.max(
-        0,
-        Math.min(0.25, target.background.bgNoiseAmount)
-      ),
+      bgNoiseAmount: Math.max(0, Math.min(0.25, target.background.bgNoiseAmount)),
       bgFogDensity: Math.max(0, Math.min(0.8, target.background.bgFogDensity)),
       bgVignette: Math.max(0, Math.min(0.8, target.background.bgVignette)),
       bgMotion: Math.max(0, Math.min(1, target.background.bgMotion)),
@@ -107,45 +90,3 @@ function clampWorldTarget(target: WorldTarget): WorldTarget {
   };
 }
 
-## Reflection バリデーション関数
-
-```typescript
-import type { Reflection } from "@/lib/types/reflection";
-
-function validateReflection(reflection: Reflection, uiLanguage: "en" | "ja"): Reflection {
-  // Check message length (warnings only, allow flexibility)
-  const charCount = reflection.message.length;
-  const recommendedMinChars = uiLanguage === "ja" ? 40 : 60;
-  const recommendedMaxChars = uiLanguage === "ja" ? 100 : 120; // Japanese chars are typically wider
-
-  if (charCount < recommendedMinChars) {
-    console.warn(
-      `[Reflection] Warning: Message is shorter than recommended (${charCount} chars, recommended min ${recommendedMinChars})`
-    );
-  }
-  if (charCount > recommendedMaxChars) {
-    console.warn(
-      `[Reflection] Warning: Message is longer than recommended (${charCount} chars, recommended max ${recommendedMaxChars})`
-    );
-  }
-
-  // Check for forbidden words (warning only, don't reject)
-  const forbiddenWords = ["I ", "You ", "We ", "ferro", "should", "need to", "try to"];
-  const found = forbiddenWords.find((word) => reflection.message.includes(word));
-  if (found) {
-    console.warn(`[Reflection] Warning: Message contains forbidden word: ${found}`);
-  }
-
-  // Clamp tone to valid values
-  const validTones: Reflection["tone"][] = ["calm", "neutral", "pulse", "wild"];
-  const tone = validTones.includes(reflection.tone)
-    ? reflection.tone
-    : "neutral";
-
-  return {
-    tone,
-    reason: reflection.reason?.trim() || "",
-    message: reflection.message.trim(),
-  };
-}
-````

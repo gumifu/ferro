@@ -5,7 +5,8 @@ export type ReflectionTone = "calm" | "neutral" | "pulse" | "wild";
 
 export type Reflection = {
   tone: ReflectionTone;
-  message: string; // 3 sentences, 60-120 chars (60-100 for Japanese), rules applied
+  reason: string; // 選定理由: なぜこのtoneが選ばれたかの説明（技術的な説明、内部的な理由）
+  message: string; // 3 sentences, 60-120 chars (60-100 for Japanese), rules applied - 実際に表示されるreflection
 };
 
 // Audio summary for Reflection generation
@@ -20,4 +21,5 @@ export type AudioSummary = {
   userMoodText?: string; // optional user input
   uiLanguage: "en" | "ja"; // UI language to match reflection
 };
+
 

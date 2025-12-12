@@ -12,6 +12,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.2",
     "@types/three": "^0.181.0",
+    "gsap": "^3.14.1",
     "music-metadata": "^11.10.3",
     "next": "16.0.7",
     "openai": "^6.10.0",

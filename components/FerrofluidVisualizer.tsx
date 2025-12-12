@@ -11,6 +11,8 @@ import { ReflectionModule } from "@/lib/ai/ReflectionModule";
 import type { AudioFrame } from "@/lib/types";
 import type { Reflection, AudioSummary } from "@/lib/types/reflection";
 import { ReflectionDisplay } from "./ReflectionDisplay";
+import { transitionColorSequence } from "@/lib/utils/colorTransition";
+import { gsap } from "gsap";
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -230,6 +232,12 @@ export default function FerrofluidVisualizer() {
   );
   const [isGeneratingReflection, setIsGeneratingReflection] = useState(false);
 
+  // GSAP color transition refs
+  const sectionColorTransitionRef = useRef<(() => void) | null>(null);
+  const globalColorTransitionRef = useRef<(() => void) | null>(null);
+  const currentSectionColorPaletteRef = useRef<string[]>([]);
+  const currentGlobalColorPaletteRef = useRef<string[]>([]);
+
   // aiPlanが変更されたらrefを更新
   useEffect(() => {
     aiPlanRef.current = aiPlan;
@@ -277,6 +285,12 @@ export default function FerrofluidVisualizer() {
     animationId: number;
     ferrofluidMaterial?: THREE.MeshPhysicalMaterial;
     backgroundMaterial?: THREE.ShaderMaterial; // AIプランのカラーを適用するため
+    smoothedBass?: number; // スムージング用のbass値
+    smoothedTreble?: number; // スムージング用のtreble値
+    smoothedScale?: number; // スムージング用のスケール値
+    silenceStartTime?: number; // 無音状態が始まった時刻
+    isResettingToInitial?: boolean; // 初期値に戻すアニメーション中かどうか
+    resetTween?: gsap.core.Tween; // リセットアニメーションのGSAP tween
   } | null>(null);
 
   useEffect(() => {
@@ -374,7 +388,8 @@ export default function FerrofluidVisualizer() {
 
     // Ball - Ferrofluid style with glossy black texture
     // Use SphereGeometry instead of IcosahedronGeometry for smooth appearance
-    const ballGeometry = new THREE.SphereGeometry(10, 128, 128);
+    // 初期サイズを小さく（10 → 7）
+    const ballGeometry = new THREE.SphereGeometry(7, 128, 128);
 
     // AIプランのカラーパレットを適用するためのマテリアル参照を保存
     const ferrofluidMaterial = new THREE.MeshPhysicalMaterial({
@@ -533,6 +548,63 @@ export default function FerrofluidVisualizer() {
       const magnetStrength = 40.0; // Strength of magnetic pull
       const magnetRange = 60.0; // Range of magnetic influence
 
+      // Smoother parameters for liquid-like deformations
+      // AIプランのパラメータを適用（あれば）
+      const aiEnergy = aiPlanParams?.energy ?? 0.5;
+      const aiTension = aiPlanParams?.tension ?? 0.5;
+      const aiSpikeAmount = aiPlanParams?.spikeAmount ?? 0;
+      const aiNoiseAmount = aiPlanParams?.noiseAmount ?? 1.0;
+      const motionStyle = aiPlanParams?.motionStyle ?? "default";
+
+      // 音声データとAIプランをブレンド（forループの外で計算してパフォーマンス向上）
+      // AIプランをベースとして、音声データでリアルタイムに変調する
+      let blendedBass: number;
+      let blendedTreble: number;
+
+      if (aiPlanParams) {
+        // AIプランがある場合：AIプランをベース（40%）として、音声データ（60%）で変調
+        // これにより、AIプランの意図を保ちつつ、音声にリアルタイムに反応する
+        const baseWeight = 0.4;
+        const audioModulationWeight = 0.6;
+        // AIプランの値を0-1の範囲に正規化してから、音声データで変調
+        const normalizedAiEnergy = Math.max(0, Math.min(1, aiEnergy));
+        const normalizedAiTension = Math.max(0, Math.min(1, aiTension));
+        // 音声データを0-1の範囲に正規化
+        const normalizedBassFr = Math.max(0, Math.min(1, bassFr));
+        const normalizedTrebleFr = Math.max(0, Math.min(1, treFr));
+        // ブレンド：ベース値 + 音声による変調
+        blendedBass =
+          normalizedAiEnergy * baseWeight +
+          normalizedBassFr * audioModulationWeight;
+        blendedTreble =
+          normalizedAiTension * baseWeight +
+          normalizedTrebleFr * audioModulationWeight;
+      } else {
+        // AIプランがない場合：音声データのみを使用
+        blendedBass = bassFr;
+        blendedTreble = treFr;
+      }
+
+      // デバッグ：AIプランパラメータが使われているか確認
+      if (aiPlanParams) {
+        const aiUsageLogCount = (window as any).__aiUsageLogCount || 0;
+        if (aiUsageLogCount < 3) {
+          (window as any).__aiUsageLogCount = aiUsageLogCount + 1;
+          console.log(
+            "[FerrofluidVisualizer] Using AI plan params in makeRoughBall:",
+            {
+              aiEnergy,
+              aiTension,
+              aiSpikeAmount,
+              aiNoiseAmount,
+              motionStyle,
+              blendedBass: blendedBass.toFixed(3),
+              blendedTreble: blendedTreble.toFixed(3),
+            }
+          );
+        }
+      }
+
       for (let i = 0; i < vertices.count; i++) {
         const x = vertices.getX(i);
         const y = vertices.getY(i);
@@ -543,49 +615,15 @@ export default function FerrofluidVisualizer() {
         const ny = y / length;
         const nz = z / length;
 
-        // Smoother parameters for liquid-like deformations
-        // AIプランのパラメータを適用（あれば）
-        const aiEnergy = aiPlanParams?.energy ?? 0.5;
-        const aiTension = aiPlanParams?.tension ?? 0.5;
-        const aiSpikeAmount = aiPlanParams?.spikeAmount ?? 0;
-        const aiNoiseAmount = aiPlanParams?.noiseAmount ?? 1.0;
-        const motionStyle = aiPlanParams?.motionStyle ?? "default";
-
-        // 音声データとAIプランをブレンド（AIプランの影響を強める）
-        // AIプランがある場合は、AIプランを優先的に使用
-        const aiWeight = aiPlanParams ? 0.9 : 0.0; // AIプランがある場合は90%の重み
-        const audioWeight = aiPlanParams ? 0.1 : 1.0; // AIプランがある場合は10%の重み
-        const blendedBass = bassFr * audioWeight + aiEnergy * aiWeight;
-        const blendedTreble = treFr * audioWeight + aiTension * aiWeight;
-
-        // デバッグ：AIプランパラメータが使われているか確認
-        if (aiPlanParams) {
-          const aiUsageLogCount = (window as any).__aiUsageLogCount || 0;
-          if (aiUsageLogCount < 3) {
-            (window as any).__aiUsageLogCount = aiUsageLogCount + 1;
-            console.log(
-              "[FerrofluidVisualizer] Using AI plan params in makeRoughBall:",
-              {
-                aiEnergy,
-                aiTension,
-                aiSpikeAmount,
-                aiNoiseAmount,
-                motionStyle,
-                blendedBass: blendedBass.toFixed(3),
-                blendedTreble: blendedTreble.toFixed(3),
-              }
-            );
-          }
-        }
-
         // モーションスタイルに応じた時間スケール
-        let timeScale = 0.3;
+        // 変化のスピードを適度に保つ（速すぎないように）
+        let timeScale = 0.25; // デフォルトを少し遅く
         if (
           motionStyle.includes("slow") ||
           motionStyle.includes("breathing") ||
           motionStyle.includes("calm")
         ) {
-          timeScale = 0.15; // ゆっくり
+          timeScale = 0.12; // ゆっくり（以前より少し遅く）
         } else if (
           motionStyle.includes("fast") ||
           motionStyle.includes("spikes") ||
@@ -594,13 +632,20 @@ export default function FerrofluidVisualizer() {
           motionStyle.includes("激しい") ||
           motionStyle.includes("激し")
         ) {
-          timeScale = 0.6; // 激しく速く
+          timeScale = 0.4; // 激しく速く（以前より少し遅く）
         }
 
         // AIプランがある場合は、より大きな変化を適用
         const baseAmp = aiPlanParams ? 3.0 : 2.0; // AIプランがある場合は振幅を大きく
         const amp = baseAmp * (1.0 + aiNoiseAmount * 0.8); // AIノイズ量で振幅を調整
-        const offset = 10; // sphere radius
+
+        // ベース半径を音声データとAIプランに基づいて動的に変更
+        // 画面からはみ出ないように少し小さめに調整
+        const baseRadius = 6.0; // デフォルト半径を小さく（9.0 → 6.0）
+        const sizeMultiplier = aiPlanParams
+          ? 0.75 + blendedBass * 0.35 + aiEnergy * 0.15 // AIプランがある場合：0.75〜1.25の範囲（少し小さく）
+          : 0.75 + blendedBass * 0.35; // AIプランがない場合：0.75〜1.1の範囲（少し小さく）
+        const offset = baseRadius * sizeMultiplier; // 動的な半径
         const noiseValue = noise3D(
           nx * 1.5 + time * timeScale,
           ny * 1.5 + time * (timeScale * 1.15),
@@ -617,14 +662,24 @@ export default function FerrofluidVisualizer() {
         const spikeDeformation =
           Math.max(0, spikeNoise - 0.3) * aiSpikeAmount * 4.0; // スパイクの影響を4倍に
 
-        // AIプランがある場合は、より大きな変形を適用
-        const bassMultiplier = aiPlanParams ? 1.5 : 0.8;
-        const trebleMultiplier = aiPlanParams ? 1.2 : 1.0;
+        // AIプランがある場合は、適度な変形を適用
+        // 変形の強さを制限して、ferroが認識できるようにする
+        const bassMultiplier = aiPlanParams ? 1.2 : 1.0; // AIプランがある場合でも控えめに
+        const trebleMultiplier = aiPlanParams ? 1.1 : 1.0; // AIプランがある場合でも控えめに
+
+        // 変形の強さをAIプランのパラメータで調整（範囲を制限）
+        const deformationStrength = aiPlanParams
+          ? 1.0 + aiEnergy * 0.2 + aiTension * 0.15 // AIプランがある場合：1.0〜1.35の範囲（控えめ）
+          : 1.0; // AIプランがない場合：デフォルト
 
         let distance =
           offset +
-          blendedBass * bassMultiplier +
-          noiseValue * amp * blendedTreble * trebleMultiplier +
+          blendedBass * bassMultiplier * deformationStrength +
+          noiseValue *
+            amp *
+            blendedTreble *
+            trebleMultiplier *
+            deformationStrength +
           spikeDeformation;
 
         // Apply magnetic attraction if mouse is active
@@ -759,6 +814,137 @@ export default function FerrofluidVisualizer() {
 
         const lowerMaxFr = lowerMax / lowerHalfArray.length;
         const upperAvgFr = upperAvg / upperHalfArray.length;
+
+        // 無音状態の検出（音量の閾値）
+        const volumeThreshold = 0.01; // 無音とみなす音量の閾値
+        const currentVolume = Math.max(lowerMaxFr, upperAvgFr);
+        const isSilent = currentVolume < volumeThreshold;
+        const currentTime = clock.getElapsedTime();
+
+        // 無音状態の追跡
+        if (isSilent && sceneRef.current) {
+          // 無音状態が始まった時刻を記録
+          if (sceneRef.current.silenceStartTime === undefined) {
+            sceneRef.current.silenceStartTime = currentTime;
+          }
+
+          // 無音が3秒以上続いたら、初期値に戻す
+          const silenceDuration =
+            currentTime - (sceneRef.current.silenceStartTime || 0);
+          if (
+            silenceDuration >= 3.0 &&
+            !sceneRef.current.isResettingToInitial
+          ) {
+            sceneRef.current.isResettingToInitial = true;
+
+            // 既存のリセットアニメーションがあれば停止
+            if (sceneRef.current.resetTween) {
+              sceneRef.current.resetTween.kill();
+            }
+
+            // 初期値
+            const initialScale = 0.6;
+            const initialPosition = { x: 0, y: 0, z: 0 };
+
+            // GSAPで3秒かけて初期値に戻す
+            const resetTween = gsap.to(
+              {
+                scale: ball.scale.x,
+                x: ball.position.x,
+                y: ball.position.y,
+                z: ball.position.z,
+              },
+              {
+                scale: initialScale,
+                x: initialPosition.x,
+                y: initialPosition.y,
+                z: initialPosition.z,
+                duration: 3.0,
+                ease: "power2.out",
+                onUpdate: function () {
+                  ball.scale.setScalar(this.targets()[0].scale);
+                  ball.position.set(
+                    this.targets()[0].x,
+                    this.targets()[0].y,
+                    this.targets()[0].z
+                  );
+                },
+                onComplete: () => {
+                  // リセット完了
+                  if (sceneRef.current) {
+                    sceneRef.current.isResettingToInitial = false;
+                    sceneRef.current.silenceStartTime = undefined;
+                    sceneRef.current.resetTween = undefined;
+                    // スムージング値もリセット
+                    sceneRef.current.smoothedScale = initialScale;
+                    sceneRef.current.smoothedBass = 0;
+                    sceneRef.current.smoothedTreble = 0;
+                  }
+                },
+              }
+            );
+
+            if (sceneRef.current) {
+              sceneRef.current.resetTween = resetTween;
+            }
+          }
+        } else if (!isSilent && sceneRef.current) {
+          // 音が鳴っている場合は無音状態の追跡をリセット
+          if (sceneRef.current.silenceStartTime !== undefined) {
+            sceneRef.current.silenceStartTime = undefined;
+          }
+          // リセットアニメーション中でなければ、通常の処理を続行
+          if (sceneRef.current.isResettingToInitial) {
+            // リセットアニメーションを中断
+            if (sceneRef.current.resetTween) {
+              sceneRef.current.resetTween.kill();
+              sceneRef.current.resetTween = undefined;
+            }
+            sceneRef.current.isResettingToInitial = false;
+          }
+        }
+
+        // リセットアニメーション中は通常の処理をスキップ
+        if (sceneRef.current?.isResettingToInitial) {
+          // ジオメトリの変形をリセット（makeRoughBallを呼ばない）
+          const geometry = ball.geometry as THREE.SphereGeometry;
+          const vertices = geometry.attributes
+            .position as THREE.BufferAttribute;
+          const radius = 7.0; // 元の半径
+
+          // 元の位置に戻す（球の形状に戻す）
+          for (let i = 0; i < vertices.count; i++) {
+            const x = vertices.getX(i);
+            const y = vertices.getY(i);
+            const z = vertices.getZ(i);
+            const length = Math.sqrt(x * x + y * y + z * z);
+            if (length > 0) {
+              // 正規化してから半径を掛ける
+              vertices.setXYZ(
+                i,
+                (x / length) * radius,
+                (y / length) * radius,
+                (z / length) * radius
+              );
+            }
+          }
+          vertices.needsUpdate = true;
+          geometry.computeVertexNormals();
+          return; // 通常の処理をスキップ
+        }
+
+        // スムージング：音楽開始時の急激な変化を防ぐ
+        const smoothingFactor = 0.15; // スムージング係数（小さいほど滑らか）
+        const initialBass = sceneRef.current.smoothedBass ?? 0;
+        const initialTreble = sceneRef.current.smoothedTreble ?? 0;
+        const smoothedBassFr =
+          initialBass + (lowerMaxFr - initialBass) * smoothingFactor;
+        const smoothedTrebleFr =
+          initialTreble + (upperAvgFr - initialTreble) * smoothingFactor;
+
+        // スムージング値を保存
+        sceneRef.current.smoothedBass = smoothedBassFr;
+        sceneRef.current.smoothedTreble = smoothedTrebleFr;
 
         // AIタイムライン収集（有効な場合）
         // enableAITimelineRefを使用して最新の値を参照
@@ -1096,59 +1282,50 @@ export default function FerrofluidVisualizer() {
                 );
               } else {
                 const material = sceneRef.current.ferrofluidMaterial;
-                // 複数の色がある場合は時間に基づいてブレンド
-                if (currentSection.colorPalette.length > 1) {
-                  const time = sceneRef.current.clock.getElapsedTime();
-                  const colorIndex =
-                    Math.floor(time * 0.5) % currentSection.colorPalette.length;
-                  const nextColorIndex =
-                    (colorIndex + 1) % currentSection.colorPalette.length;
-                  const t = (time * 0.5) % 1.0;
+                // カラーパレットが変更された場合のみ新しいアニメーションを開始
+                const paletteChanged =
+                  JSON.stringify(currentSectionColorPaletteRef.current) !==
+                  JSON.stringify(currentSection.colorPalette);
 
-                  try {
-                    const color1Hex = currentSection.colorPalette[colorIndex];
-                    const color2Hex =
-                      currentSection.colorPalette[nextColorIndex];
-                    const color1Value = color1Hex.startsWith("#")
-                      ? parseInt(color1Hex.substring(1), 16)
-                      : parseInt(color1Hex, 16);
-                    const color2Value = color2Hex.startsWith("#")
-                      ? parseInt(color2Hex.substring(1), 16)
-                      : parseInt(color2Hex, 16);
+                if (paletteChanged) {
+                  // 既存のアニメーションを停止
+                  if (sectionColorTransitionRef.current) {
+                    sectionColorTransitionRef.current();
+                    sectionColorTransitionRef.current = null;
+                  }
 
-                    const color1 = new THREE.Color(color1Value);
-                    const color2 = new THREE.Color(color2Value);
-                    material.color.lerpColors(color1, color2, t);
-                    // より鮮やかに見えるように、明度を上げる
-                    material.color.multiplyScalar(1.3);
-                    // clampは存在しないので、手動で値を制限
-                    material.color.r = Math.max(
-                      0,
-                      Math.min(1, material.color.r)
-                    );
-                    material.color.g = Math.max(
-                      0,
-                      Math.min(1, material.color.g)
-                    );
-                    material.color.b = Math.max(
-                      0,
-                      Math.min(1, material.color.b)
-                    );
-                    material.needsUpdate = true;
+                  // パレットを更新
+                  currentSectionColorPaletteRef.current = [
+                    ...currentSection.colorPalette,
+                  ];
 
-                    // デバッグログ：カラーが変更されたことを確認（1秒ごとに1回）
-                    if (Math.floor(time * 2) % 2 === 0) {
-                      console.log(
-                        "[FerrofluidVisualizer] Color updated (section):",
-                        {
-                          color1: color1Hex,
-                          color2: color2Hex,
-                          currentColor: material.color.getHexString(),
-                        }
-                      );
-                    }
-                  } catch (e) {
-                    console.warn("Invalid color hex:", e);
+                  if (currentSection.colorPalette.length > 1) {
+                    // 複数の色がある場合はGSAPで循環遷移
+                    const stopAnimation = transitionColorSequence(
+                      material.color,
+                      currentSection.colorPalette,
+                      2.0, // 各色への遷移時間（2秒）
+                      "power2.inOut",
+                      () => {
+                        // より鮮やかに見えるように、明度を上げる
+                        material.color.multiplyScalar(1.3);
+                        // clampは存在しないので、手動で値を制限
+                        material.color.r = Math.max(
+                          0,
+                          Math.min(1, material.color.r)
+                        );
+                        material.color.g = Math.max(
+                          0,
+                          Math.min(1, material.color.g)
+                        );
+                        material.color.b = Math.max(
+                          0,
+                          Math.min(1, material.color.b)
+                        );
+                        material.needsUpdate = true;
+                      }
+                    );
+                    sectionColorTransitionRef.current = stopAnimation;
                   }
                 } else {
                   // 単一の色の場合
@@ -1287,52 +1464,50 @@ export default function FerrofluidVisualizer() {
               sceneRef.current?.ferrofluidMaterial
             ) {
               const material = sceneRef.current.ferrofluidMaterial;
-              // 複数の色がある場合は時間に基づいてブレンド
-              if (currentAIPlan.global.colorPalette.length > 1) {
-                const time = sceneRef.current.clock.getElapsedTime();
-                const colorIndex =
-                  Math.floor(time * 0.5) %
-                  currentAIPlan.global.colorPalette.length;
-                const nextColorIndex =
-                  (colorIndex + 1) % currentAIPlan.global.colorPalette.length;
-                const t = (time * 0.5) % 1.0;
+              // カラーパレットが変更された場合のみ新しいアニメーションを開始
+              const paletteChanged =
+                JSON.stringify(currentGlobalColorPaletteRef.current) !==
+                JSON.stringify(currentAIPlan.global.colorPalette);
 
-                try {
-                  const color1Hex =
-                    currentAIPlan.global.colorPalette[colorIndex];
-                  const color2Hex =
-                    currentAIPlan.global.colorPalette[nextColorIndex];
-                  const color1Value = color1Hex.startsWith("#")
-                    ? parseInt(color1Hex.substring(1), 16)
-                    : parseInt(color1Hex, 16);
-                  const color2Value = color2Hex.startsWith("#")
-                    ? parseInt(color2Hex.substring(1), 16)
-                    : parseInt(color2Hex, 16);
+              if (paletteChanged) {
+                // 既存のアニメーションを停止
+                if (globalColorTransitionRef.current) {
+                  globalColorTransitionRef.current();
+                  globalColorTransitionRef.current = null;
+                }
 
-                  const color1 = new THREE.Color(color1Value);
-                  const color2 = new THREE.Color(color2Value);
-                  material.color.lerpColors(color1, color2, t);
-                  // より鮮やかに見えるように、明度を上げる
-                  material.color.multiplyScalar(1.3);
-                  // clampは存在しないので、手動で値を制限
-                  material.color.r = Math.max(0, Math.min(1, material.color.r));
-                  material.color.g = Math.max(0, Math.min(1, material.color.g));
-                  material.color.b = Math.max(0, Math.min(1, material.color.b));
-                  material.needsUpdate = true;
+                // パレットを更新
+                currentGlobalColorPaletteRef.current = [
+                  ...currentAIPlan.global.colorPalette,
+                ];
 
-                  // デバッグログ：カラーが変更されたことを確認（1秒ごとに1回）
-                  if (Math.floor(time * 2) % 2 === 0) {
-                    console.log(
-                      "[FerrofluidVisualizer] Color updated (global):",
-                      {
-                        color1: color1Hex,
-                        color2: color2Hex,
-                        currentColor: material.color.getHexString(),
-                      }
-                    );
-                  }
-                } catch (e) {
-                  console.warn("Invalid color hex:", e);
+                if (currentAIPlan.global.colorPalette.length > 1) {
+                  // 複数の色がある場合はGSAPで循環遷移
+                  const stopAnimation = transitionColorSequence(
+                    material.color,
+                    currentAIPlan.global.colorPalette,
+                    2.0, // 各色への遷移時間（2秒）
+                    "power2.inOut",
+                    () => {
+                      // より鮮やかに見えるように、明度を上げる
+                      material.color.multiplyScalar(1.3);
+                      // clampは存在しないので、手動で値を制限
+                      material.color.r = Math.max(
+                        0,
+                        Math.min(1, material.color.r)
+                      );
+                      material.color.g = Math.max(
+                        0,
+                        Math.min(1, material.color.g)
+                      );
+                      material.color.b = Math.max(
+                        0,
+                        Math.min(1, material.color.b)
+                      );
+                      material.needsUpdate = true;
+                    }
+                  );
+                  globalColorTransitionRef.current = stopAnimation;
                 }
               } else {
                 // 単一の色の場合
@@ -1392,14 +1567,46 @@ export default function FerrofluidVisualizer() {
           }
         }
 
+        // スムージングされた値を使用
         makeRoughBall(
           ball,
-          modulate(Math.pow(lowerMaxFr, 0.8), 0, 1, 0, 8),
-          modulate(upperAvgFr, 0, 1, 0, 4),
+          modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8),
+          modulate(smoothedTrebleFr, 0, 1, 0, 4),
           mousePosition,
           mouseActive,
           currentAIPlanParams
         );
+
+        // オブジェクト全体のスケールを音声データとAIプランに基づいて動的に変更
+        // 画面からはみ出ないように少し小さめに調整し、スムージングを適用
+        if (currentAIPlanParams) {
+          // AIプランがある場合：energyとbassに基づいてスケール（初期サイズを小さく）
+          const baseScale = 0.6; // ベーススケールを小さく（0.9 → 0.6）
+          const energyScale = currentAIPlanParams.energy * 0.2; // 0〜0.2の範囲（少し小さく）
+          const bassScale =
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.15; // スムージングされた値を使用
+          const targetScale = baseScale + energyScale + bassScale; // 0.6〜0.95の範囲（画面内に収まるように）
+
+          // スケールもスムージング
+          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
+          const smoothedScale =
+            currentScale + (targetScale - currentScale) * smoothingFactor;
+          sceneRef.current.smoothedScale = smoothedScale;
+          ball.scale.setScalar(smoothedScale);
+        } else {
+          // AIプランがない場合：音声データのみでスケール（初期サイズを小さく）
+          const baseScale = 0.6; // ベーススケールを小さく（0.9 → 0.6）
+          const bassScale =
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.15; // スムージングされた値を使用
+          const targetScale = baseScale + bassScale; // 0.6〜0.75の範囲（画面内に収まるように）
+
+          // スケールもスムージング
+          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
+          const smoothedScale =
+            currentScale + (targetScale - currentScale) * smoothingFactor;
+          sceneRef.current.smoothedScale = smoothedScale;
+          ball.scale.setScalar(smoothedScale);
+        }
       } else {
         // Even without audio, apply mouse attraction and AI plan if available
         let currentAIPlanParams:
@@ -1450,6 +1657,30 @@ export default function FerrofluidVisualizer() {
           mouseActive,
           currentAIPlanParams
         );
+
+        // オブジェクト全体のスケールをAIプランに基づいて動的に変更（音声がない場合）
+        // 画面からはみ出ないように少し小さめに調整
+        if (currentAIPlanParams) {
+          const baseScale = 0.9; // ベーススケールを少し小さく（1.0 → 0.9）
+          const energyScale = currentAIPlanParams.energy * 0.25; // 0〜0.25の範囲（少し小さく）
+          const targetScale = baseScale + energyScale; // 0.9〜1.15の範囲（画面内に収まるように）
+
+          // スケールもスムージング
+          const smoothingFactor = 0.15;
+          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
+          const smoothedScale =
+            currentScale + (targetScale - currentScale) * smoothingFactor;
+          sceneRef.current.smoothedScale = smoothedScale;
+          ball.scale.setScalar(smoothedScale);
+        } else {
+          const baseScale = 0.9;
+          const smoothingFactor = 0.15;
+          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
+          const smoothedScale =
+            currentScale + (baseScale - currentScale) * smoothingFactor;
+          sceneRef.current.smoothedScale = smoothedScale;
+          ball.scale.setScalar(smoothedScale);
+        }
       }
 
       group.rotation.y += 0.005;
@@ -2817,16 +3048,26 @@ export default function FerrofluidVisualizer() {
                   Colors: {aiPlan.global.colorPalette.join(", ")}
                 </div>
               )}
-            {(aiPlan.explanation || aiPlan.encouragement) && (
+            {/* Moodを選んだ理由 */}
+            {aiPlan.explanation && (
+              <div className="mt-2 pt-2 border-t border-green-400/20">
+                <div className="text-green-300 font-medium mb-1">
+                  Moodを選んだ理由
+                </div>
+                <div className="text-white/90 text-xs leading-relaxed">
+                  {aiPlan.explanation}
+                </div>
+              </div>
+            )}
+
+            {/* Message */}
+            {aiPlan.encouragement && (
               <div className="mt-2 pt-2 border-t border-green-400/20">
                 <div className="text-green-300 font-medium mb-1">
                   💭 Message
                 </div>
                 <div className="text-white/90 text-xs leading-relaxed">
-                  {aiPlan.explanation && (
-                    <div className="mb-2">{aiPlan.explanation}</div>
-                  )}
-                  {aiPlan.encouragement && <div>{aiPlan.encouragement}</div>}
+                  {aiPlan.encouragement}
                 </div>
               </div>
             )}

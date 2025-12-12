@@ -30,7 +30,7 @@ export type FerroAnimationSection = {
 
 export type FerroAnimationPlan = {
   overallMood: string;
-  explanation?: string; // AIが選んだカラーやパラメータの理由を説明
+  explanation?: string; // Moodを選んだ理由（音楽の特徴に基づく説明）
   encouragement?: string; // ユーザーへの励ましメッセージ
   global: {
     baseEnergy: number;
