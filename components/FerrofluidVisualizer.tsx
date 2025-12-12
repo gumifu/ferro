@@ -12,6 +12,7 @@ import type { AudioFrame } from "@/lib/types";
 import type { Reflection, AudioSummary } from "@/lib/types/reflection";
 import { ReflectionDisplay } from "./ReflectionDisplay";
 import { transitionColorSequence } from "@/lib/utils/colorTransition";
+import { gsap } from "gsap";
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -237,14 +238,58 @@ export default function FerrofluidVisualizer() {
   const currentSectionColorPaletteRef = useRef<string[]>([]);
   const currentGlobalColorPaletteRef = useRef<string[]>([]);
 
-  // aiPlanが変更されたらrefを更新
+  // GSAP scale transition refs
+  const scaleTransitionTweenRef = useRef<gsap.core.Tween | null>(null);
+
+  // aiPlanが変更されたらrefを更新し、baseScaleをGSAPで遷移
   useEffect(() => {
+    const previousPlan = aiPlanRef.current;
     aiPlanRef.current = aiPlan;
+
     if (aiPlan) {
       console.log("[FerrofluidVisualizer] AI plan ref updated:", {
         sections: aiPlan.sections.length,
         overallMood: aiPlan.overallMood,
       });
+    }
+
+    // AIモードの切り替え時にbaseScaleをスムーズに遷移
+    if (sceneRef.current && previousPlan !== aiPlan) {
+      // 既存のtweenがあれば停止
+      if (scaleTransitionTweenRef.current) {
+        scaleTransitionTweenRef.current.kill();
+      }
+
+      // 新しいbaseScaleを計算
+      let targetBaseScale: number;
+      if (aiPlan && aiPlan.global) {
+        // AIプランがある場合：energyに基づいてbaseScaleを調整
+        const energyScale = aiPlan.global.baseEnergy * 0.5; // 0〜0.5の範囲
+        targetBaseScale = 0.8 + energyScale; // 0.8〜1.3の範囲
+      } else {
+        // AIプランがない場合：標準のferroの大きさ
+        targetBaseScale = 3.5;
+      }
+
+      // GSAPでスムーズに遷移（3秒かけて）
+      scaleTransitionTweenRef.current = gsap.to(
+        {
+          baseScale: sceneRef.current.baseScale,
+        },
+        {
+          baseScale: targetBaseScale,
+          duration: 3.0,
+          ease: "power2.inOut",
+          onUpdate: function () {
+            if (sceneRef.current) {
+              sceneRef.current.baseScale = this.targets()[0].baseScale;
+            }
+          },
+          onComplete: () => {
+            scaleTransitionTweenRef.current = null;
+          },
+        }
+      );
     }
   }, [aiPlan]);
   const timelineFramesRef = useRef<AudioFrame[]>([]);
@@ -286,7 +331,10 @@ export default function FerrofluidVisualizer() {
     backgroundMaterial?: THREE.ShaderMaterial; // AIプランのカラーを適用するため
     smoothedBass?: number; // スムージング用のbass値
     smoothedTreble?: number; // スムージング用のtreble値
-    smoothedScale?: number; // スムージング用のスケール値
+    // スケール管理：1箇所で管理
+    baseScale: number; // 初期/基準スケール（AI/手動で変わる"基準"）
+    audioScalePulse: number; // 音声による一時的な倍率（停止したら1に戻す）
+    smoothedAudioScalePulse?: number; // スムージング用のaudioScalePulse値
   } | null>(null);
 
   useEffect(() => {
@@ -476,6 +524,8 @@ export default function FerrofluidVisualizer() {
       animationId: 0,
       ferrofluidMaterial,
       backgroundMaterial, // AIプランのカラーを適用するため
+      baseScale: 3.5, // 初期サイズ（AI mode disabled時のデフォルト）
+      audioScalePulse: 1.0, // 音声による倍率（停止時は1.0）
     };
 
     // Mouse interaction - convert mouse position to 3D space
@@ -1455,36 +1505,49 @@ export default function FerrofluidVisualizer() {
           currentAIPlanParams
         );
 
-        // オブジェクト全体のスケールを音声データとAIプランに基づいて動的に変更
-        // 画面からはみ出ないように少し小さめに調整し、スムージングを適用
-        if (currentAIPlanParams) {
-          // AIプランがある場合：energyとbassに基づいてスケール
-          const baseScale = 0.8; // ベーススケール（初期値より小さく）
-          const energyScale = currentAIPlanParams.energy * 0.5; // 0〜0.15の範囲（小さく）
-          const bassScale =
-            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.1; // スムージングされた値を使用（小さく）
-          const targetScale = baseScale + energyScale + bassScale; // 0.8〜1.05の範囲（画面内に収まるように）
+        // スケール管理：baseScale（基準）とaudioScalePulse（音声による倍率）を分離
+        // 1箇所で管理することで、停止時に初期サイズに戻ることを保証
 
-          // スケールもスムージング
-          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
-          const smoothedScale =
-            currentScale + (targetScale - currentScale) * smoothingFactor;
-          sceneRef.current.smoothedScale = smoothedScale;
-          ball.scale.setScalar(smoothedScale);
-        } else {
-          // AIプランがない場合：音声データのみでスケール（小さく調整）
-          const baseScale = 0.7; // 0.01 → 0.7に変更（適切なサイズに）
-          const bassScale =
-            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.005; // 0.1 → 0.08に変更（少し小さく）
-          const targetScale = baseScale + bassScale; // 0.7〜0.78の範囲（以前は0.01〜0.11）
-
-          // スケールもスムージング
-          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
-          const smoothedScale =
-            currentScale + (targetScale - currentScale) * smoothingFactor;
-          sceneRef.current.smoothedScale = smoothedScale;
-          ball.scale.setScalar(smoothedScale);
+        // 一時停止中はaudioScalePulseを1.0にリセット
+        if (isPaused || audioRef.current?.paused) {
+          sceneRef.current.audioScalePulse = 1.0;
+          sceneRef.current.smoothedAudioScalePulse = 1.0;
         }
+
+        // baseScaleの決定（AIプランの有無で変更）
+        if (currentAIPlanParams) {
+          // AIプランがある場合：energyに基づいてbaseScaleを調整
+          const energyScale = currentAIPlanParams.energy * 0.5; // 0〜0.5の範囲
+          sceneRef.current.baseScale = 0.8 + energyScale; // 0.8〜1.3の範囲
+        } else {
+          // AIプランがない場合：固定値
+          sceneRef.current.baseScale = 0.35;
+        }
+
+        // audioScalePulseの計算（音声データによる一時的な倍率、一時停止中は1.0）
+        if (isPaused || audioRef.current?.paused) {
+          sceneRef.current.audioScalePulse = 1.0;
+          sceneRef.current.smoothedAudioScalePulse = 1.0;
+        } else {
+          const bassScale =
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) *
+            (currentAIPlanParams ? 0.1 : 0.005); // AIプランがある場合は大きく
+          const targetAudioScalePulse = 1.0 + bassScale; // 1.0〜1.1（AIあり）または1.0〜1.005（AIなし）
+
+          // audioScalePulseをスムージング
+          const currentAudioScalePulse =
+            sceneRef.current.smoothedAudioScalePulse ?? 1.0;
+          const smoothedAudioScalePulse =
+            currentAudioScalePulse +
+            (targetAudioScalePulse - currentAudioScalePulse) * smoothingFactor;
+          sceneRef.current.smoothedAudioScalePulse = smoothedAudioScalePulse;
+          sceneRef.current.audioScalePulse = smoothedAudioScalePulse;
+        }
+
+        // 最終スケール = baseScale * audioScalePulse
+        const finalScale =
+          sceneRef.current.baseScale * sceneRef.current.audioScalePulse;
+        ball.scale.setScalar(finalScale);
       } else {
         // Even without audio, apply mouse attraction and AI plan if available
         let currentAIPlanParams:
@@ -1536,29 +1599,25 @@ export default function FerrofluidVisualizer() {
           currentAIPlanParams
         );
 
-        // オブジェクト全体のスケールをAIプランに基づいて動的に変更（音声がない場合）
-        // 画面からはみ出ないように少し小さめに調整
-        if (currentAIPlanParams) {
-          const baseScale = 0.9; // ベーススケールを少し小さく（1.0 → 0.9）
-          const energyScale = currentAIPlanParams.energy * 0.25; // 0〜0.25の範囲（少し小さく）
-          const targetScale = baseScale + energyScale; // 0.9〜1.15の範囲（画面内に収まるように）
+        // スケール管理：音声がない場合（baseScaleのみ、audioScalePulse = 1.0）
+        // audioScalePulseを1.0にリセット（音声がないので）
+        sceneRef.current.audioScalePulse = 1.0;
+        sceneRef.current.smoothedAudioScalePulse = 1.0;
 
-          // スケールもスムージング
-          const smoothingFactor = 0.15;
-          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
-          const smoothedScale =
-            currentScale + (targetScale - currentScale) * smoothingFactor;
-          sceneRef.current.smoothedScale = smoothedScale;
-          ball.scale.setScalar(smoothedScale);
+        // baseScaleの決定（AIプランの有無で変更）
+        if (currentAIPlanParams) {
+          // AIプランがある場合：energyに基づいてbaseScaleを調整
+          const energyScale = currentAIPlanParams.energy * 0.25; // 0〜0.25の範囲
+          sceneRef.current.baseScale = 0.9 + energyScale; // 0.9〜1.15の範囲
         } else {
-          const baseScale = 3.5; // 初期サイズを大きく（0.9 → 1.2）
-          const smoothingFactor = 0.15;
-          const currentScale = sceneRef.current.smoothedScale ?? baseScale;
-          const smoothedScale =
-            currentScale + (baseScale - currentScale) * smoothingFactor;
-          sceneRef.current.smoothedScale = smoothedScale;
-          ball.scale.setScalar(smoothedScale);
+          // AIプランがない場合：初期サイズ
+          sceneRef.current.baseScale = 3.5;
         }
+
+        // 最終スケール = baseScale * audioScalePulse（audioScalePulse = 1.0なので baseScale そのまま）
+        const finalScale =
+          sceneRef.current.baseScale * sceneRef.current.audioScalePulse;
+        ball.scale.setScalar(finalScale);
       }
 
       group.rotation.y += 0.005;
@@ -2387,6 +2446,49 @@ export default function FerrofluidVisualizer() {
       sceneRef.current.analyser = null;
       sceneRef.current.audioContext = null;
       sceneRef.current.dataArray = null;
+    }
+
+    // Reset scale to initial value when audio stops (using GSAP for smooth transition)
+    if (sceneRef.current) {
+      // 既存のtweenがあれば停止
+      if (scaleTransitionTweenRef.current) {
+        scaleTransitionTweenRef.current.kill();
+      }
+
+      const targetBaseScale = !aiPlanRef.current
+        ? 3.5
+        : sceneRef.current.baseScale;
+      const targetAudioScalePulse = 1.0;
+
+      // GSAPでスムーズにリセット（2秒かけて）
+      scaleTransitionTweenRef.current = gsap.to(
+        {
+          baseScale: sceneRef.current.baseScale,
+          audioScalePulse: sceneRef.current.audioScalePulse,
+        },
+        {
+          baseScale: targetBaseScale,
+          audioScalePulse: targetAudioScalePulse,
+          duration: 2.0,
+          ease: "power2.out",
+          onUpdate: function () {
+            if (sceneRef.current) {
+              sceneRef.current.baseScale = this.targets()[0].baseScale;
+              sceneRef.current.audioScalePulse =
+                this.targets()[0].audioScalePulse;
+              sceneRef.current.smoothedAudioScalePulse =
+                this.targets()[0].audioScalePulse;
+            }
+          },
+          onComplete: () => {
+            scaleTransitionTweenRef.current = null;
+          },
+        }
+      );
+
+      // Also reset smoothed bass and treble
+      sceneRef.current.smoothedBass = 0;
+      sceneRef.current.smoothedTreble = 0;
     }
 
     // 停止時にAIプランを生成（タイムラインが収集されている場合）
