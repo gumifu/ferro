@@ -1460,7 +1460,7 @@ export default function FerrofluidVisualizer() {
         if (currentAIPlanParams) {
           // AIプランがある場合：energyとbassに基づいてスケール
           const baseScale = 0.8; // ベーススケール（初期値より小さく）
-          const energyScale = currentAIPlanParams.energy * 0.15; // 0〜0.15の範囲（小さく）
+          const energyScale = currentAIPlanParams.energy * 0.5; // 0〜0.15の範囲（小さく）
           const bassScale =
             modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.1; // スムージングされた値を使用（小さく）
           const targetScale = baseScale + energyScale + bassScale; // 0.8〜1.05の範囲（画面内に収まるように）
@@ -1473,10 +1473,10 @@ export default function FerrofluidVisualizer() {
           ball.scale.setScalar(smoothedScale);
         } else {
           // AIプランがない場合：音声データのみでスケール（小さく調整）
-          const baseScale = 0.8; // ベーススケール（初期値より小さく）
+          const baseScale = 0.7; // 0.01 → 0.7に変更（適切なサイズに）
           const bassScale =
-            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.1; // スムージングされた値を使用（小さく）
-          const targetScale = baseScale + bassScale; // 0.8〜0.9の範囲（画面内に収まるように）
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.005; // 0.1 → 0.08に変更（少し小さく）
+          const targetScale = baseScale + bassScale; // 0.7〜0.78の範囲（以前は0.01〜0.11）
 
           // スケールもスムージング
           const currentScale = sceneRef.current.smoothedScale ?? baseScale;
@@ -1551,7 +1551,7 @@ export default function FerrofluidVisualizer() {
           sceneRef.current.smoothedScale = smoothedScale;
           ball.scale.setScalar(smoothedScale);
         } else {
-          const baseScale = 1.2; // 初期サイズを大きく（0.9 → 1.2）
+          const baseScale = 3.5; // 初期サイズを大きく（0.9 → 1.2）
           const smoothingFactor = 0.15;
           const currentScale = sceneRef.current.smoothedScale ?? baseScale;
           const smoothedScale =
