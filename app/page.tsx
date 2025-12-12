@@ -1,6 +1,6 @@
 "use client";
 
-import FerrofluidVisualizer from "@/components/FerrofluidVisualizer";
+import FerrofluidVisualizer from "@/components/visualizer/FerrofluidVisualizer";
 
 export default function Home() {
   return (
