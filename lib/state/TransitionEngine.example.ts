@@ -12,7 +12,7 @@ export function exampleTransitionEngineUsage(material: THREE.MeshStandardMateria
   // Initialize with current state
   const initialState: WorldState = {
     renderMode: "full",
-    mood: "neutral",
+    mood: "calm",
     ferro: {
       baseColor: "#3366ff",
       saturation: 0.5,

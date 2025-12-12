@@ -12,7 +12,6 @@ import type { AudioFrame } from "@/lib/types";
 import type { Reflection, AudioSummary } from "@/lib/types/reflection";
 import { ReflectionDisplay } from "./ReflectionDisplay";
 import { transitionColorSequence } from "@/lib/utils/colorTransition";
-import { gsap } from "gsap";
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -288,9 +287,6 @@ export default function FerrofluidVisualizer() {
     smoothedBass?: number; // スムージング用のbass値
     smoothedTreble?: number; // スムージング用のtreble値
     smoothedScale?: number; // スムージング用のスケール値
-    silenceStartTime?: number; // 無音状態が始まった時刻
-    isResettingToInitial?: boolean; // 初期値に戻すアニメーション中かどうか
-    resetTween?: gsap.core.Tween; // リセットアニメーションのGSAP tween
   } | null>(null);
 
   useEffect(() => {
@@ -389,7 +385,7 @@ export default function FerrofluidVisualizer() {
     // Ball - Ferrofluid style with glossy black texture
     // Use SphereGeometry instead of IcosahedronGeometry for smooth appearance
     // 初期サイズを小さく（10 → 7）
-    const ballGeometry = new THREE.SphereGeometry(7, 128, 128);
+    const ballGeometry = new THREE.SphereGeometry(10, 128, 128); // 初期サイズを大きく（7 → 10）
 
     // AIプランのカラーパレットを適用するためのマテリアル参照を保存
     const ferrofluidMaterial = new THREE.MeshPhysicalMaterial({
@@ -814,124 +810,6 @@ export default function FerrofluidVisualizer() {
 
         const lowerMaxFr = lowerMax / lowerHalfArray.length;
         const upperAvgFr = upperAvg / upperHalfArray.length;
-
-        // 無音状態の検出（音量の閾値）
-        const volumeThreshold = 0.01; // 無音とみなす音量の閾値
-        const currentVolume = Math.max(lowerMaxFr, upperAvgFr);
-        const isSilent = currentVolume < volumeThreshold;
-        const currentTime = clock.getElapsedTime();
-
-        // 無音状態の追跡
-        if (isSilent && sceneRef.current) {
-          // 無音状態が始まった時刻を記録
-          if (sceneRef.current.silenceStartTime === undefined) {
-            sceneRef.current.silenceStartTime = currentTime;
-          }
-
-          // 無音が3秒以上続いたら、初期値に戻す
-          const silenceDuration =
-            currentTime - (sceneRef.current.silenceStartTime || 0);
-          if (
-            silenceDuration >= 3.0 &&
-            !sceneRef.current.isResettingToInitial
-          ) {
-            sceneRef.current.isResettingToInitial = true;
-
-            // 既存のリセットアニメーションがあれば停止
-            if (sceneRef.current.resetTween) {
-              sceneRef.current.resetTween.kill();
-            }
-
-            // 初期値
-            const initialScale = 0.6;
-            const initialPosition = { x: 0, y: 0, z: 0 };
-
-            // GSAPで3秒かけて初期値に戻す
-            const resetTween = gsap.to(
-              {
-                scale: ball.scale.x,
-                x: ball.position.x,
-                y: ball.position.y,
-                z: ball.position.z,
-              },
-              {
-                scale: initialScale,
-                x: initialPosition.x,
-                y: initialPosition.y,
-                z: initialPosition.z,
-                duration: 3.0,
-                ease: "power2.out",
-                onUpdate: function () {
-                  ball.scale.setScalar(this.targets()[0].scale);
-                  ball.position.set(
-                    this.targets()[0].x,
-                    this.targets()[0].y,
-                    this.targets()[0].z
-                  );
-                },
-                onComplete: () => {
-                  // リセット完了
-                  if (sceneRef.current) {
-                    sceneRef.current.isResettingToInitial = false;
-                    sceneRef.current.silenceStartTime = undefined;
-                    sceneRef.current.resetTween = undefined;
-                    // スムージング値もリセット
-                    sceneRef.current.smoothedScale = initialScale;
-                    sceneRef.current.smoothedBass = 0;
-                    sceneRef.current.smoothedTreble = 0;
-                  }
-                },
-              }
-            );
-
-            if (sceneRef.current) {
-              sceneRef.current.resetTween = resetTween;
-            }
-          }
-        } else if (!isSilent && sceneRef.current) {
-          // 音が鳴っている場合は無音状態の追跡をリセット
-          if (sceneRef.current.silenceStartTime !== undefined) {
-            sceneRef.current.silenceStartTime = undefined;
-          }
-          // リセットアニメーション中でなければ、通常の処理を続行
-          if (sceneRef.current.isResettingToInitial) {
-            // リセットアニメーションを中断
-            if (sceneRef.current.resetTween) {
-              sceneRef.current.resetTween.kill();
-              sceneRef.current.resetTween = undefined;
-            }
-            sceneRef.current.isResettingToInitial = false;
-          }
-        }
-
-        // リセットアニメーション中は通常の処理をスキップ
-        if (sceneRef.current?.isResettingToInitial) {
-          // ジオメトリの変形をリセット（makeRoughBallを呼ばない）
-          const geometry = ball.geometry as THREE.SphereGeometry;
-          const vertices = geometry.attributes
-            .position as THREE.BufferAttribute;
-          const radius = 7.0; // 元の半径
-
-          // 元の位置に戻す（球の形状に戻す）
-          for (let i = 0; i < vertices.count; i++) {
-            const x = vertices.getX(i);
-            const y = vertices.getY(i);
-            const z = vertices.getZ(i);
-            const length = Math.sqrt(x * x + y * y + z * z);
-            if (length > 0) {
-              // 正規化してから半径を掛ける
-              vertices.setXYZ(
-                i,
-                (x / length) * radius,
-                (y / length) * radius,
-                (z / length) * radius
-              );
-            }
-          }
-          vertices.needsUpdate = true;
-          geometry.computeVertexNormals();
-          return; // 通常の処理をスキップ
-        }
 
         // スムージング：音楽開始時の急激な変化を防ぐ
         const smoothingFactor = 0.15; // スムージング係数（小さいほど滑らか）
@@ -1580,12 +1458,12 @@ export default function FerrofluidVisualizer() {
         // オブジェクト全体のスケールを音声データとAIプランに基づいて動的に変更
         // 画面からはみ出ないように少し小さめに調整し、スムージングを適用
         if (currentAIPlanParams) {
-          // AIプランがある場合：energyとbassに基づいてスケール（初期サイズを小さく）
-          const baseScale = 0.6; // ベーススケールを小さく（0.9 → 0.6）
-          const energyScale = currentAIPlanParams.energy * 0.2; // 0〜0.2の範囲（少し小さく）
+          // AIプランがある場合：energyとbassに基づいてスケール
+          const baseScale = 0.8; // ベーススケール（初期値より小さく）
+          const energyScale = currentAIPlanParams.energy * 0.15; // 0〜0.15の範囲（小さく）
           const bassScale =
-            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.15; // スムージングされた値を使用
-          const targetScale = baseScale + energyScale + bassScale; // 0.6〜0.95の範囲（画面内に収まるように）
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.1; // スムージングされた値を使用（小さく）
+          const targetScale = baseScale + energyScale + bassScale; // 0.8〜1.05の範囲（画面内に収まるように）
 
           // スケールもスムージング
           const currentScale = sceneRef.current.smoothedScale ?? baseScale;
@@ -1594,11 +1472,11 @@ export default function FerrofluidVisualizer() {
           sceneRef.current.smoothedScale = smoothedScale;
           ball.scale.setScalar(smoothedScale);
         } else {
-          // AIプランがない場合：音声データのみでスケール（初期サイズを小さく）
-          const baseScale = 0.6; // ベーススケールを小さく（0.9 → 0.6）
+          // AIプランがない場合：音声データのみでスケール（小さく調整）
+          const baseScale = 0.8; // ベーススケール（初期値より小さく）
           const bassScale =
-            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.15; // スムージングされた値を使用
-          const targetScale = baseScale + bassScale; // 0.6〜0.75の範囲（画面内に収まるように）
+            modulate(Math.pow(smoothedBassFr, 0.8), 0, 1, 0, 8) * 0.1; // スムージングされた値を使用（小さく）
+          const targetScale = baseScale + bassScale; // 0.8〜0.9の範囲（画面内に収まるように）
 
           // スケールもスムージング
           const currentScale = sceneRef.current.smoothedScale ?? baseScale;
@@ -1673,7 +1551,7 @@ export default function FerrofluidVisualizer() {
           sceneRef.current.smoothedScale = smoothedScale;
           ball.scale.setScalar(smoothedScale);
         } else {
-          const baseScale = 0.9;
+          const baseScale = 1.2; // 初期サイズを大きく（0.9 → 1.2）
           const smoothingFactor = 0.15;
           const currentScale = sceneRef.current.smoothedScale ?? baseScale;
           const smoothedScale =
@@ -3048,26 +2926,20 @@ export default function FerrofluidVisualizer() {
                   Colors: {aiPlan.global.colorPalette.join(", ")}
                 </div>
               )}
-            {/* Moodを選んだ理由 */}
-            {aiPlan.explanation && (
-              <div className="mt-2 pt-2 border-t border-green-400/20">
-                <div className="text-green-300 font-medium mb-1">
-                  Moodを選んだ理由
-                </div>
-                <div className="text-white/90 text-xs leading-relaxed">
-                  {aiPlan.explanation}
-                </div>
-              </div>
-            )}
-
-            {/* Message */}
-            {aiPlan.encouragement && (
+            {(aiPlan.explanation || aiPlan.encouragement) && (
               <div className="mt-2 pt-2 border-t border-green-400/20">
                 <div className="text-green-300 font-medium mb-1">
                   💭 Message
                 </div>
                 <div className="text-white/90 text-xs leading-relaxed">
-                  {aiPlan.encouragement}
+                  {aiPlan.explanation && (
+                    <div className="mb-2">{aiPlan.explanation}</div>
+                  )}
+                  {aiPlan.encouragement && (
+                    <div className={aiPlan.explanation ? "mt-2" : ""}>
+                      {aiPlan.encouragement}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
