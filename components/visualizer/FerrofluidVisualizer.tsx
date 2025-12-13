@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createNoise3D } from "simplex-noise";
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { parseBlob } from "music-metadata";
 import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
 import { AIPlannerFactory } from "@/lib/ai/AIPlannerFactory";
@@ -490,30 +489,8 @@ export default function FerrofluidVisualizer() {
     // 背景のマテリアルへの参照を保存（AIプランのカラーを適用するため）
     const backgroundMaterial = backgroundPlane.material as THREE.ShaderMaterial;
 
-    // Setup HDRI environment map for realistic reflections
-    const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    pmremGenerator.compileEquirectangularShader();
-
-    // Try to load HDRI, fallback gracefully if not found
-    const rgbeLoader = new RGBELoader();
-    rgbeLoader.setPath("/hdr/").load(
-      "studio.hdr",
-      (hdrTexture) => {
-        const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
-        scene.environment = envMap;
-        ferrofluidMaterial.envMap = envMap;
-        ferrofluidMaterial.envMapIntensity = 1.2;
-        ferrofluidMaterial.needsUpdate = true;
-        hdrTexture.dispose();
-        pmremGenerator.dispose();
-      },
-      undefined,
-      () => {
-        // Silently handle HDR file not found - it's optional
-        // Continue without HDRI - existing lights will work
-        pmremGenerator.dispose();
-      }
-    );
+    // Note: HDRI environment map loading removed to avoid 404 errors
+    // The scene will work fine with existing lights without HDRI
 
     // Clock for time-based animations
     const clock = new THREE.Clock();
@@ -648,9 +625,10 @@ export default function FerrofluidVisualizer() {
 
       // デバッグ：AIプランパラメータが使われているか確認
       if (aiPlanParams) {
-        const aiUsageLogCount = (window as any).__aiUsageLogCount || 0;
+        const win = window as unknown as Record<string, unknown>;
+        const aiUsageLogCount = (win.__aiUsageLogCount as number) || 0;
         if (aiUsageLogCount < 3) {
-          (window as any).__aiUsageLogCount = aiUsageLogCount + 1;
+          win.__aiUsageLogCount = aiUsageLogCount + 1;
           console.log(
             "[FerrofluidVisualizer] Using AI plan params in makeRoughBall:",
             {
@@ -944,11 +922,12 @@ export default function FerrofluidVisualizer() {
             // デバッグ用：最初のフレームが追加されない場合の詳細ログ
             if (timelineFramesRef.current.length === 0) {
               // 最初のフレームが追加されない場合のみログ出力（スパムを防ぐため、5秒ごとに1回）
+              const win = window as unknown as Record<string, unknown>;
               const lastDebugTime =
-                (window as any).__lastTimelineDebugTime || 0;
+                (win.__lastTimelineDebugTime as number) || 0;
               const now = Date.now();
               if (now - lastDebugTime > 5000) {
-                (window as any).__lastTimelineDebugTime = now;
+                win.__lastTimelineDebugTime = now;
                 console.log(
                   "[FerrofluidVisualizer] Timeline collection check (first frame):",
                   {
@@ -973,9 +952,10 @@ export default function FerrofluidVisualizer() {
           // デバッグ用：条件が満たされていない場合
           if (enableAITimelineRef.current) {
             // 最初の数回のみログ出力（スパムを防ぐ）
-            const debugCount = (window as any).__timelineDebugCount || 0;
+            const win = window as unknown as Record<string, unknown>;
+            const debugCount = (win.__timelineDebugCount as number) || 0;
             if (debugCount < 5) {
-              (window as any).__timelineDebugCount = debugCount + 1;
+              win.__timelineDebugCount = debugCount + 1;
               console.warn(
                 "[FerrofluidVisualizer] Timeline collection conditions not met:",
                 {
@@ -1020,9 +1000,10 @@ export default function FerrofluidVisualizer() {
           }
 
           // AIプランがない場合のログ（最初の数回のみ）
-          const noPlanLogCount = (window as any).__noPlanLogCount || 0;
+          const win = window as unknown as Record<string, unknown>;
+          const noPlanLogCount = (win.__noPlanLogCount as number) || 0;
           if (noPlanLogCount < 3) {
-            (window as any).__noPlanLogCount = noPlanLogCount + 1;
+            win.__noPlanLogCount = noPlanLogCount + 1;
             console.warn(
               "[FerrofluidVisualizer] AI plan is null or undefined in render"
             );
@@ -1065,22 +1046,24 @@ export default function FerrofluidVisualizer() {
 
           // 現在の時間に対応するセクションを見つける
           // セクション検索：startTime <= currentTime < endTime または最後のセクションの場合は endTime まで含む
-          let currentSection = currentAIPlan.sections.find((section, index) => {
-            const isLastSection = index === currentAIPlan.sections.length - 1;
-            if (isLastSection) {
-              // 最後のセクションは endTime まで含む
-              return (
-                currentTime >= section.startTime &&
-                currentTime <= section.endTime
-              );
-            } else {
-              // それ以外は endTime を含まない
-              return (
-                currentTime >= section.startTime &&
-                currentTime < section.endTime
-              );
+          const currentSection = currentAIPlan.sections.find(
+            (section, index) => {
+              const isLastSection = index === currentAIPlan.sections.length - 1;
+              if (isLastSection) {
+                // 最後のセクションは endTime まで含む
+                return (
+                  currentTime >= section.startTime &&
+                  currentTime <= section.endTime
+                );
+              } else {
+                // それ以外は endTime を含まない
+                return (
+                  currentTime >= section.startTime &&
+                  currentTime < section.endTime
+                );
+              }
             }
-          });
+          );
 
           // デバッグ：セクションが見つからない場合（毎回ログ出力）
           if (!currentSection) {
@@ -1500,9 +1483,10 @@ export default function FerrofluidVisualizer() {
 
         // デバッグ：AIプランパラメータが渡されているか確認
         if (currentAIPlanParams) {
-          const aiParamLogCount = (window as any).__aiParamLogCount || 0;
+          const win = window as unknown as Record<string, unknown>;
+          const aiParamLogCount = (win.__aiParamLogCount as number) || 0;
           if (aiParamLogCount < 3) {
-            (window as any).__aiParamLogCount = aiParamLogCount + 1;
+            win.__aiParamLogCount = aiParamLogCount + 1;
             console.log(
               "[FerrofluidVisualizer] Passing AI plan params to makeRoughBall:",
               currentAIPlanParams
@@ -3445,8 +3429,8 @@ export default function FerrofluidVisualizer() {
             {/* Hint when audio capture is not started */}
             {!isSystemAudio && (
               <p className="text-white/60 text-xs mt-2 text-center">
-                Click "Capture this window's audio" in the modal to capture
-                audio
+                Click &quot;Capture this window&apos;s audio&quot; in the modal
+                to capture audio
               </p>
             )}
           </div>
@@ -3679,10 +3663,10 @@ export default function FerrofluidVisualizer() {
                         {/* Capture Audio Button */}
                         <div className="mt-4 p-4 bg-blue-600/20 rounded-lg border border-blue-400/30">
                           <p className="text-white/80 text-sm mb-2">
-                            To reflect this window's audio in ferro, click the
-                            button below and select the "Window" tab in the
-                            browser's sharing dialog, then select this browser
-                            window.
+                            To reflect this window&apos;s audio in ferro, click
+                            the button below and select the &quot;Window&quot;
+                            tab in the browser&apos;s sharing dialog, then
+                            select this browser window.
                           </p>
                           <p className="text-white/60 text-xs mb-3">
                             ※モーダルを閉じてから共有ダイアログが表示されます。YouTubeプレーヤーは画面右下に表示され続けます。
@@ -3768,10 +3752,10 @@ export default function FerrofluidVisualizer() {
                     {/* Capture Audio Button */}
                     <div className="mt-4 p-4 bg-blue-600/20 rounded-lg border border-blue-400/30">
                       <p className="text-white/80 text-sm mb-2">
-                        To reflect this window's audio in ferro, click the
-                        button below and select the "Window" tab in the
-                        browser's sharing dialog, then select this browser
-                        window.
+                        To reflect this window&apos;s audio in ferro, click the
+                        button below and select the &quot;Window&quot; tab in
+                        the browser&apos;s sharing dialog, then select this
+                        browser window.
                       </p>
                       <p className="text-white/60 text-xs mb-3">
                         ※ The sharing dialog will appear after closing the
@@ -3794,7 +3778,7 @@ export default function FerrofluidVisualizer() {
                         className="w-full px-4 py-3 rounded-lg bg-blue-600/40 hover:bg-blue-600/50 text-white font-semibold transition-colors backdrop-blur-sm border border-blue-400/30 flex items-center justify-center gap-2"
                       >
                         <FaDesktop className="text-lg" />
-                        <span>Capture this window's audio</span>
+                        <span>Capture this window&apos;s audio</span>
                       </button>
                     </div>
                   </div>
@@ -3820,10 +3804,10 @@ export default function FerrofluidVisualizer() {
                     {/* Capture Audio Button */}
                     <div className="mt-4 p-4 bg-blue-600/20 rounded-lg border border-blue-400/30">
                       <p className="text-white/80 text-sm mb-2">
-                        To reflect this window's audio in ferro, click the
-                        button below and select the "Window" tab in the
-                        browser's sharing dialog, then select this browser
-                        window.
+                        To reflect this window&apos;s audio in ferro, click the
+                        button below and select the &quot;Window&quot; tab in
+                        the browser&apos;s sharing dialog, then select this
+                        browser window.
                       </p>
                       <p className="text-white/60 text-xs mb-3">
                         ※ The sharing dialog will appear after closing the
@@ -3846,7 +3830,7 @@ export default function FerrofluidVisualizer() {
                         className="w-full px-4 py-3 rounded-lg bg-blue-600/40 hover:bg-blue-600/50 text-white font-semibold transition-colors backdrop-blur-sm border border-blue-400/30 flex items-center justify-center gap-2"
                       >
                         <FaDesktop className="text-lg" />
-                        <span>Capture this window's audio</span>
+                        <span>Capture this window&apos;s audio</span>
                       </button>
                     </div>
                   </div>

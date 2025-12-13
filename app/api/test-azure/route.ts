@@ -70,22 +70,23 @@ export async function GET() {
         model: response.model,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: string; status?: number; statusText?: string };
     console.error("[test-azure] Error details:", {
-      message: error.message,
-      code: error.code,
-      status: error.status,
-      statusText: error.statusText,
-      cause: error.cause,
+      message: err.message,
+      code: err.code,
+      status: err.status,
+      statusText: err.statusText,
+      cause: (error as { cause?: unknown }).cause,
     });
 
     return NextResponse.json({
       success: false,
       message: "Azure OpenAIへの接続に失敗しました",
       details: {
-        error: error.message,
-        errorCode: error.code,
-        errorStatus: error.status,
+        error: err.message,
+        errorCode: err.code,
+        errorStatus: err.status,
         deployment,
         endpoint: endpoint ? `${endpoint.substring(0, 30)}...` : "not set",
       },

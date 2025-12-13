@@ -223,12 +223,13 @@ Please respond ONLY with JSON following this schema:
         console.log("[generate-plan] ✅ Azure OpenAI response received successfully");
         content = response.choices?.[0]?.message?.content ?? "";
         console.log("[generate-plan] Response content length:", content.length);
-      } catch (apiError: any) {
+      } catch (apiError: unknown) {
+        const error = apiError as { message?: string; code?: string; status?: number; statusText?: string };
         console.error("[generate-plan] Azure OpenAI API error:", {
-          message: apiError.message,
-          code: apiError.code,
-          status: apiError.status,
-          statusText: apiError.statusText,
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          statusText: error.statusText,
           deployment,
           endpoint: normalizedEndpoint,
           apiVersion,
@@ -237,7 +238,7 @@ Please respond ONLY with JSON following this schema:
         });
 
         // 404エラーの場合、デプロイメント名が間違っている可能性がある
-        if (apiError.status === 404) {
+        if (error.status === 404) {
           const errorMsg = `デプロイメント "${deployment}" が見つかりません。Azure Portalで実際のデプロイメント名を確認してください。エンドポイント: ${normalizedEndpoint}`;
           console.error("[generate-plan]", errorMsg);
           throw new Error(errorMsg);
@@ -335,21 +336,22 @@ Please respond ONLY with JSON following this schema:
     });
 
     return NextResponse.json({ plan: validatedPlan }, { status: 200 });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const error = e as { message?: string; stack?: string; name?: string; cause?: unknown };
     console.error("[generate-plan] error", {
-      message: e.message,
-      stack: e.stack,
-      name: e.name,
-      cause: e.cause,
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      cause: error.cause,
     });
 
-    const errorMessage = e.message || "Failed to generate plan.";
+    const errorMessage = error.message || "Failed to generate plan.";
     return NextResponse.json(
       {
         error: errorMessage,
         details: process.env.NODE_ENV === "development" ? {
-          stack: e.stack,
-          name: e.name,
+          stack: error.stack,
+          name: error.name,
         } : undefined,
       },
       { status: 500 }
