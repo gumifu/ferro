@@ -47,6 +47,7 @@ export function SettingsPanel() {
 
   // Azure OpenAI用のモデルリスト
   const azureModels: { value: AzureModel; label: string }[] = [
+    { value: "ferro-gpt-4o-mini", label: "ferro-gpt-4o-mini (Default)" },
     { value: "gpt-4o-mini-2", label: "gpt-4o-mini-2" },
     { value: "gpt-4o-mini", label: "gpt-4o-mini" },
   ];

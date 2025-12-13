@@ -42,10 +42,10 @@ export class AzureAIPlannerModule {
   constructor(deploymentName?: string) {
     const endpoint = process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY;
-    const deployment =
-      deploymentName ||
-      process.env.NEXT_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME ||
-      "gpt-4o-mini-2";
+      const deployment =
+        deploymentName ||
+        process.env.NEXT_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME ||
+        "ferro-gpt-4o-mini";
 
     if (!endpoint || !apiKey) {
       console.warn(

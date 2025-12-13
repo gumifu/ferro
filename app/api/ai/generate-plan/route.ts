@@ -31,12 +31,26 @@ const FerroAnimationPlanSchema = z.object({
   sections: z.array(FerroAnimationSectionSchema),
 });
 
+console.log("[env]", {
+  endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+  deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+  version: process.env.AZURE_OPENAI_API_VERSION,
+  hasKey: !!process.env.AZURE_OPENAI_API_KEY,
+});
 /**
  * AIプラン生成用のAPIルート
  * サーバーサイドでのみ実行され、APIキーをブラウザに露出させない
  */
 export async function POST(req: NextRequest) {
   try {
+    // 環境変数の確認（リクエストごとにログ出力）
+    console.log("[generate-plan] [env] Request-time env check:", {
+      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+      deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+      version: process.env.AZURE_OPENAI_API_VERSION,
+      hasKey: !!process.env.AZURE_OPENAI_API_KEY,
+    });
+
     console.log("[generate-plan] Request received");
 
     const body = await req.json();
@@ -131,7 +145,7 @@ Please respond ONLY with JSON following this schema:
       const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
       const apiKey = process.env.AZURE_OPENAI_API_KEY;
       const deployment =
-        model || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o-mini";
+        model || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "ferro-gpt-4o-mini";
       const apiVersion =
         process.env.AZURE_OPENAI_API_VERSION || "2024-07-18";
 
@@ -174,16 +188,21 @@ Please respond ONLY with JSON following this schema:
         apiVersion,
       });
 
+      // 実際のリクエストURLを構築（デバッグ用）
+      const expectedUrl = `${normalizedEndpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+
       console.log("[generate-plan] Calling Azure OpenAI API with:", {
         deployment,
         endpoint: normalizedEndpoint,
         apiVersion,
         messagesCount: 2,
+        expectedUrl, // 実際のリクエストURL
       });
 
       try {
+        // Azure OpenAIでは、modelパラメータにデプロイメント名を指定
         response = await client.chat.completions.create({
-          model: deployment,
+          model: deployment, // deployment名をmodelパラメータに指定
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -192,8 +211,9 @@ Please respond ONLY with JSON following this schema:
           temperature: 0.7,
         });
 
-        console.log("[generate-plan] Azure OpenAI response received");
+        console.log("[generate-plan] ✅ Azure OpenAI response received successfully");
         content = response.choices?.[0]?.message?.content ?? "";
+        console.log("[generate-plan] Response content length:", content.length);
       } catch (apiError: any) {
         console.error("[generate-plan] Azure OpenAI API error:", {
           message: apiError.message,
@@ -202,7 +222,17 @@ Please respond ONLY with JSON following this schema:
           statusText: apiError.statusText,
           deployment,
           endpoint: normalizedEndpoint,
+          apiVersion,
+          requestUrl: `${normalizedEndpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`,
+          fullError: apiError,
         });
+
+        // 404エラーの場合、デプロイメント名が間違っている可能性がある
+        if (apiError.status === 404) {
+          const errorMsg = `デプロイメント "${deployment}" が見つかりません。Azure Portalで実際のデプロイメント名を確認してください。エンドポイント: ${normalizedEndpoint}`;
+          console.error("[generate-plan]", errorMsg);
+          throw new Error(errorMsg);
+        }
         throw apiError;
       }
     } else if (provider === "openai") {
@@ -287,9 +317,12 @@ Please respond ONLY with JSON following this schema:
       }
     }
 
-    console.log("[generate-plan] Plan generated successfully:", {
+    console.log("[generate-plan] ✅✅✅ AI Plan generated successfully! ✅✅✅");
+    console.log("[generate-plan] Plan details:", {
       overallMood: validatedPlan.overallMood,
       sections: validatedPlan.sections.length,
+      hasExplanation: !!validatedPlan.explanation,
+      hasEncouragement: !!validatedPlan.encouragement,
     });
 
     return NextResponse.json({ plan: validatedPlan }, { status: 200 });

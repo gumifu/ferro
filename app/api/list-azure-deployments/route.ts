@@ -4,8 +4,10 @@ import { AzureOpenAI } from "openai";
 export const runtime = "nodejs";
 
 /**
- * Azure OpenAI接続テスト用のAPIエンドポイント
- * GET /api/test-azure
+ * Azure OpenAIデプロイメント一覧を取得するAPIエンドポイント
+ * GET /api/list-azure-deployments
+ *
+ * 注意: このエンドポイントは開発環境でのみ使用可能
  */
 export async function GET() {
   // 開発環境でのみ実行可能
@@ -18,8 +20,6 @@ export async function GET() {
 
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment =
-    process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "ferro-gpt-4o-mini";
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-07-18";
 
   // 環境変数のチェック
@@ -30,13 +30,11 @@ export async function GET() {
       details: {
         hasEndpoint: !!endpoint,
         hasApiKey: !!apiKey,
-        deployment,
       },
     });
   }
 
   try {
-    // Azure OpenAI用の設定
     const normalizedEndpoint = endpoint.endsWith("/")
       ? endpoint.slice(0, -1)
       : endpoint;
@@ -47,31 +45,47 @@ export async function GET() {
       apiVersion: apiVersion,
     });
 
-    // 簡単なテストリクエスト
-    const response = await client.chat.completions.create({
-      model: deployment,
-      messages: [
-        {
-          role: "user",
-          content: "Hello, this is a connection test. Please respond with 'OK'.",
-        },
-      ],
-      max_tokens: 10,
+    // デプロイメント一覧を取得（Azure OpenAI REST APIを使用）
+    // 注意: openai SDKには直接的なデプロイメント一覧取得メソッドがないため、
+    // REST APIを直接呼び出す必要があります
+    const deploymentsUrl = `${normalizedEndpoint}/openai/deployments?api-version=${apiVersion}`;
+
+    const response = await fetch(deploymentsUrl, {
+      method: "GET",
+      headers: {
+        "api-key": apiKey,
+      },
     });
 
-    const content = response.choices[0]?.message?.content;
+    if (!response.ok) {
+      const errorText = await response.text();
+      return NextResponse.json({
+        success: false,
+        message: "デプロイメント一覧の取得に失敗しました",
+        details: {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          endpoint: normalizedEndpoint,
+          apiVersion,
+        },
+      });
+    }
+
+    const data = await response.json();
 
     return NextResponse.json({
       success: true,
-      message: "Azure OpenAIへの接続に成功しました",
+      message: "デプロイメント一覧を取得しました",
+      deployments: data.data || data.value || [],
       details: {
-        deployment,
-        response: content,
-        model: response.model,
+        endpoint: normalizedEndpoint,
+        apiVersion,
+        count: (data.data || data.value || []).length,
       },
     });
   } catch (error: any) {
-    console.error("[test-azure] Error details:", {
+    console.error("[list-azure-deployments] Error details:", {
       message: error.message,
       code: error.code,
       status: error.status,
@@ -81,14 +95,14 @@ export async function GET() {
 
     return NextResponse.json({
       success: false,
-      message: "Azure OpenAIへの接続に失敗しました",
+      message: "デプロイメント一覧の取得に失敗しました",
       details: {
         error: error.message,
         errorCode: error.code,
         errorStatus: error.status,
-        deployment,
         endpoint: endpoint ? `${endpoint.substring(0, 30)}...` : "not set",
       },
     });
   }
 }
+

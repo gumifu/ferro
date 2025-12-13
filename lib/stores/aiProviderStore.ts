@@ -3,7 +3,7 @@ import { create } from "zustand";
 export type AIProvider = "azure" | "openai" | "none";
 
 // Azure OpenAI用のデプロイメント名
-export type AzureModel = "gpt-4o-mini-2" | "gpt-4o-mini" | string;
+export type AzureModel = "ferro-gpt-4o-mini" | "gpt-4o-mini-2" | "gpt-4o-mini" | string;
 
 // OpenAI API用のモデル名
 export type OpenAIModel = "gpt-4o-mini" | "gpt-4o" | "gpt-4-turbo" | string;
@@ -18,7 +18,7 @@ interface AIProviderStore {
 }
 
 // デフォルトモデル（環境変数はサーバーサイドのみなので、クライアント側では固定値を使用）
-const defaultAzureModel: AzureModel = "gpt-4o-mini";
+const defaultAzureModel: AzureModel = "ferro-gpt-4o-mini";
 const defaultOpenAIModel: OpenAIModel = "gpt-4o-mini";
 
 export const useAIProviderStore = create<AIProviderStore>((set) => ({

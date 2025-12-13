@@ -92,6 +92,14 @@ export class AIPlannerFactory {
         throw new Error("No plan in response");
       }
 
+      console.log("[AIPlannerFactory] ✅✅✅ AI Plan received successfully! ✅✅✅");
+      console.log("[AIPlannerFactory] Plan summary:", {
+        overallMood: data.plan.overallMood,
+        sections: data.plan.sections?.length || 0,
+        hasExplanation: !!data.plan.explanation,
+        hasEncouragement: !!data.plan.encouragement,
+      });
+
       useAIPlanStore.getState().setPlan(data.plan);
       useAIPlanStore.getState().setIsGenerating(false);
 
