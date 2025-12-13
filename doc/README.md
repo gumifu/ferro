@@ -44,3 +44,5 @@ Reflection 言語ルール。AI が生成する Reflection メッセージの文
 - 型定義が必要 → `v2-api-types.md`
 - システム設計が必要 → `v2-specification.md`
 - 実装手順が必要 → `v2-implementation-guide.md`
+
+

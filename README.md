@@ -14,13 +14,33 @@ npm install
 
 `.env.local`ファイルをプロジェクトルートに作成し、以下を追加：
 
+#### Azure AI (デフォルト・推奨)
+
 ```env
-NEXT_PUBLIC_OPENAI_API_KEY=your_openai_api_key_here
+# Azure OpenAI（サーバーサイド専用 - NEXT_PUBLIC_を付けない）
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key_here
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini-2
+AZURE_OPENAI_API_VERSION=2024-07-18
+
+# Azure Speech AI (将来的な拡張用)
+AZURE_SPEECH_KEY=your_azure_speech_key_here
+AZURE_SPEECH_REGION=your_azure_region_here
 ```
 
-OpenAI APIキーは [OpenAI Platform](https://platform.openai.com/api-keys) で取得できます。
+#### OpenAI API (比較・検証用)
 
-**注意**: APIキーが設定されていない場合、AI機能は無効になりますが、リアルタイムの音声反応は動作します。
+```env
+# OpenAI API（サーバーサイド専用 - NEXT_PUBLIC_を付けない）
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+**重要**:
+- 環境変数は**サーバーサイド専用**です（`NEXT_PUBLIC_`プレフィックスを付けない）
+- `.env.local`（開発環境）とVercel/本番環境のEnvironment Variablesに同じキーを設定してください
+- APIキーはブラウザに露出されません（API Route経由で呼び出します）
+- Azure AIがデフォルトです。設定がない場合、AI機能は無効になりますが、リアルタイムの音声反応は動作します
+- 開発者向けのAIプロバイダー切り替え機能は、画面右上の「Settings」から利用できます
 
 ### 3. 開発サーバーの起動
 
@@ -36,6 +56,7 @@ npm run dev
 
 - **Mic**: マイクからの音声入力に反応
 - **Audio File**: ローカルの音声ファイルを再生
+- **Tab Audio**: ブラウザタブの音声に反応（対応環境のみ）
 
 ### セッションの開始
 
@@ -56,7 +77,8 @@ npm run dev
 - **React / TypeScript**
 - **@react-three/fiber** / **@react-three/drei**
 - **Web Audio API**
-- **OpenAI API** (gpt-4o-mini)
+- **Azure OpenAI** (デフォルト) / **OpenAI API** (比較・検証用)
+- **Azure Speech AI** (将来的な拡張用)
 - **Zustand** (状態管理)
 - **Zod** (型検証)
 
@@ -79,10 +101,14 @@ ferro-visualize/
 │   ├── audio/
 │   │   └── AudioInputModule.ts  # 音声入力・解析
 │   ├── ai/
-│   │   └── AIPlannerModule.ts   # OpenAI 統合
+│   │   ├── AIPlannerModule.ts   # OpenAI API 統合
+│   │   ├── AzureAIPlannerModule.ts  # Azure OpenAI 統合
+│   │   ├── AzureSpeechModule.ts     # Azure Speech AI 統合
+│   │   └── AIPlannerFactory.ts  # AIプロバイダー切り替え
 │   ├── stores/
 │   │   ├── audioStore.ts        # 音声状態管理
-│   │   └── aiPlanStore.ts       # AIプラン状態管理
+│   │   ├── aiPlanStore.ts       # AIプラン状態管理
+│   │   └── aiProviderStore.ts  # AIプロバイダー状態管理
 │   └── types.ts                 # 型定義
 └── .env.local                  # 環境変数（要作成）
 ```

@@ -6,7 +6,8 @@ import { createNoise3D } from "simplex-noise";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { parseBlob } from "music-metadata";
 import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
-import { AIPlannerModule } from "@/lib/ai/AIPlannerModule";
+import { AIPlannerFactory } from "@/lib/ai/AIPlannerFactory";
+import { useAIProviderStore } from "@/lib/stores/aiProviderStore";
 import { ReflectionModule } from "@/lib/ai/ReflectionModule";
 import type { AudioFrame } from "@/lib/types";
 import type { Reflection, AudioSummary } from "@/lib/types/reflection";
@@ -214,7 +215,8 @@ export default function FerrofluidVisualizer() {
   const youtubePlayerRef = useRef<HTMLDivElement>(null);
 
   // AI機能関連
-  const aiPlannerRef = useRef<AIPlannerModule | null>(null);
+  const aiPlannerFactoryRef = useRef<AIPlannerFactory | null>(null);
+  const { provider: aiProvider } = useAIProviderStore();
   const reflectionModuleRef = useRef<ReflectionModule | null>(null);
   const [userMoodText, setUserMoodText] = useState("");
   const [enableAITimeline, setEnableAITimeline] = useState(false);
@@ -2621,15 +2623,23 @@ export default function FerrofluidVisualizer() {
       return;
     }
 
-    if (!aiPlannerRef.current) {
-      console.log("[FerrofluidVisualizer] Creating new AIPlannerModule");
-      aiPlannerRef.current = new AIPlannerModule();
+    // AI providerが"none"の場合はスキップ
+    if (aiProvider === "none") {
+      console.log(
+        "[FerrofluidVisualizer] AI provider is set to 'none', skipping AI plan generation"
+      );
+      return;
+    }
+
+    if (!aiPlannerFactoryRef.current) {
+      console.log("[FerrofluidVisualizer] Creating new AIPlannerFactory");
+      aiPlannerFactoryRef.current = new AIPlannerFactory();
     }
 
     // Check if AI planner is available
-    if (!aiPlannerRef.current.isAvailable()) {
-      const errorMsg =
-        "OpenAI APIキーが設定されていません。.env.localファイルにNEXT_PUBLIC_OPENAI_API_KEYを設定し、開発サーバーを再起動してください。";
+    if (!aiPlannerFactoryRef.current.isAvailable()) {
+      const providerName = aiProvider === "azure" ? "Azure" : "OpenAI";
+      const errorMsg = `${providerName} APIキーが設定されていません。.env.localファイル（開発環境）またはEnvironment Variables（本番環境）に必要な環境変数を設定してください。`;
       useAIPlanStore.getState().setError(errorMsg);
       console.warn("[FerrofluidVisualizer]", errorMsg);
       setError(errorMsg);
@@ -2639,7 +2649,11 @@ export default function FerrofluidVisualizer() {
 
     try {
       // タイムラインを作成
-      const sourceType: "file" | "mic" = isPlayingFile ? "file" : "mic";
+      const sourceType: "file" | "mic" | "system" = isPlayingFile
+        ? "file"
+        : isSystemAudio
+        ? "system"
+        : "mic";
       const timeline = {
         trackInfo: {
           duration:
@@ -2657,17 +2671,24 @@ export default function FerrofluidVisualizer() {
         duration: timeline.trackInfo.duration,
         source: timeline.trackInfo.source,
         userMoodText,
+        aiProvider,
       });
 
-      const plan = await aiPlannerRef.current.generatePlan(
+      const plan = await aiPlannerFactoryRef.current.generatePlan(
         timeline,
         userMoodText
       );
+
+      if (!plan) {
+        console.warn("[FerrofluidVisualizer] AI plan generation returned null");
+        return;
+      }
 
       console.log("[FerrofluidVisualizer] AI plan generated successfully:", {
         overallMood: plan.overallMood,
         sections: plan.sections.length,
         global: plan.global,
+        aiProvider,
       });
 
       // 成功メッセージを表示

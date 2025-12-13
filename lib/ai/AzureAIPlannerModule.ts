@@ -1,9 +1,9 @@
-import OpenAI from "openai";
+import { AzureOpenAI } from "openai";
 import { z } from "zod";
 import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
 import type { AudioTimeline, FerroAnimationPlan } from "@/lib/types";
 
-// Zod schema for validation
+// Zod schema for validation (AIPlannerModuleと同じ)
 const FerroAnimationSectionSchema = z.object({
   name: z.string(),
   startTime: z.number(),
@@ -18,8 +18,8 @@ const FerroAnimationSectionSchema = z.object({
 
 const FerroAnimationPlanSchema = z.object({
   overallMood: z.string(),
-  explanation: z.string().optional(), // Moodを選んだ理由（音楽の特徴に基づく説明）
-  encouragement: z.string().optional(), // ユーザーへの励ましメッセージ
+  explanation: z.string().optional(),
+  encouragement: z.string().optional(),
   global: z.object({
     baseEnergy: z.number().min(0).max(1),
     baseTension: z.number().min(0).max(1),
@@ -28,63 +28,83 @@ const FerroAnimationPlanSchema = z.object({
   sections: z.array(FerroAnimationSectionSchema),
 });
 
-export class AIPlannerModule {
-  private openai: OpenAI | null = null;
-  private modelName: string = "gpt-4o-mini";
+/**
+ * Azure OpenAI Planner Module
+ * Azure OpenAIを使用してアニメーションプランを生成
+ *
+ * 注意: ferroは感情をラベリングしない
+ * AIは判断・発話しない。音の状態を抽象化し、視覚パラメータに変換するのみ
+ */
+export class AzureAIPlannerModule {
+  private client: AzureOpenAI | null = null;
+  private defaultDeploymentName: string = "";
 
-  constructor(modelName?: string) {
-    if (modelName) {
-      this.modelName = modelName;
-    }
-    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  constructor(deploymentName?: string) {
+    const endpoint = process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT;
+    const apiKey = process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY;
+    const deployment =
+      deploymentName ||
+      process.env.NEXT_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME ||
+      "gpt-4o-mini-2";
 
-    // Debug log
-    console.log("[AIPlannerModule] Checking API key:", {
-      hasKey: !!apiKey,
-      keyLength: apiKey?.length || 0,
-      keyPrefix: apiKey?.substring(0, 7) || "N/A",
-      isPlaceholder: apiKey === "your_openai_api_key_here",
-    });
-
-    if (!apiKey || apiKey === "your_openai_api_key_here" || apiKey.trim() === "") {
-      console.warn("[AIPlannerModule] NEXT_PUBLIC_OPENAI_API_KEY not found or not set");
-      console.warn("[AIPlannerModule] Please set NEXT_PUBLIC_OPENAI_API_KEY in .env.local");
-      console.warn("[AIPlannerModule] Make sure to restart the dev server after setting the key");
+    if (!endpoint || !apiKey) {
+      console.warn(
+        "[AzureAIPlannerModule] Azure OpenAI credentials not found. " +
+        "Please set NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT and NEXT_PUBLIC_AZURE_OPENAI_API_KEY in .env.local"
+      );
       return;
     }
 
-    this.openai = new OpenAI({
-      apiKey,
-      dangerouslyAllowBrowser: true, // Note: In production, use API route instead
-    });
+    try {
+      // Azure OpenAI用の設定
+      // エンドポイントの末尾スラッシュを正規化
+      const normalizedEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
 
-    console.log("[AIPlannerModule] OpenAI client initialized successfully");
+      // AzureOpenAIクラスを使用（APIキー認証）
+      // エンドポイントは https://{resource-name}.openai.azure.com または
+      // https://{resource-name}.cognitiveservices.azure.com の形式
+      // 注意: 本番環境ではAPIルート経由で呼び出すことを推奨
+      this.client = new AzureOpenAI({
+        endpoint: normalizedEndpoint,
+        apiKey: apiKey,
+        apiVersion: "2024-02-15-preview",
+        dangerouslyAllowBrowser: true, // 開発環境のみ。本番ではAPIルート経由を推奨
+      });
+      this.defaultDeploymentName = deployment;
+      console.log("[AzureAIPlannerModule] Azure OpenAI client initialized successfully", {
+        endpoint: normalizedEndpoint,
+        deployment,
+      });
+    } catch (error) {
+      console.error("[AzureAIPlannerModule] Initialization error:", error);
+    }
+  }
+
+  /**
+   * デプロイメント名を取得（動的に変更可能）
+   */
+  getDeploymentName(): string {
+    return this.defaultDeploymentName;
+  }
+
+  /**
+   * デプロイメント名を設定
+   */
+  setDeploymentName(deploymentName: string): void {
+    this.defaultDeploymentName = deploymentName;
   }
 
   isAvailable(): boolean {
-    return this.openai !== null;
-  }
-
-  /**
-   * モデル名を取得
-   */
-  getModelName(): string {
-    return this.modelName;
-  }
-
-  /**
-   * モデル名を設定
-   */
-  setModelName(modelName: string): void {
-    this.modelName = modelName;
+    return this.client !== null;
   }
 
   async generatePlan(
     audioTimeline: AudioTimeline,
     userMoodText: string = ""
   ): Promise<FerroAnimationPlan> {
-    if (!this.openai) {
-      const errorMessage = "OpenAI APIキーが設定されていません。.env.localファイルにNEXT_PUBLIC_OPENAI_API_KEYを設定してください。";
+    if (!this.client) {
+      const errorMessage =
+        "Azure OpenAI APIキーが設定されていません。.env.localファイルにNEXT_PUBLIC_AZURE_OPENAI_ENDPOINTとNEXT_PUBLIC_AZURE_OPENAI_API_KEYを設定してください。";
       useAIPlanStore.getState().setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -157,8 +177,10 @@ Please respond ONLY with JSON following this schema:
   ]
 }`;
 
-      const response = await this.openai.chat.completions.create({
-        model: this.modelName,
+      // Azure OpenAIでは、modelパラメータにデプロイメント名を指定
+      const deploymentName = this.getDeploymentName();
+      const response = await this.client.chat.completions.create({
+        model: deploymentName,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -169,7 +191,7 @@ Please respond ONLY with JSON following this schema:
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        throw new Error("No response content from OpenAI");
+        throw new Error("No response content from Azure OpenAI");
       }
 
       // Parse and validate JSON
@@ -184,13 +206,15 @@ Please respond ONLY with JSON following this schema:
       const validatedPlan = FerroAnimationPlanSchema.parse(jsonData);
 
       // Additional validation: ensure sections cover the timeline
-      const timelineDuration = audioTimeline.trackInfo.duration ||
+      const timelineDuration =
+        audioTimeline.trackInfo.duration ||
         (audioTimeline.frames.length > 0
           ? audioTimeline.frames[audioTimeline.frames.length - 1].time
           : 0);
 
       if (validatedPlan.sections.length > 0) {
-        const lastSection = validatedPlan.sections[validatedPlan.sections.length - 1];
+        const lastSection =
+          validatedPlan.sections[validatedPlan.sections.length - 1];
         if (lastSection.endTime < timelineDuration) {
           // Extend last section to cover full timeline
           validatedPlan.sections[validatedPlan.sections.length - 1] = {
@@ -205,14 +229,15 @@ Please respond ONLY with JSON following this schema:
 
       return validatedPlan;
     } catch (error) {
-      const errorMessage = error instanceof Error
-        ? error.message
-        : "AIプランの生成に失敗しました";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Azure AIプランの生成に失敗しました";
 
       useAIPlanStore.getState().setError(errorMessage);
       useAIPlanStore.getState().setIsGenerating(false);
 
-      console.error("[AIPlannerModule] Error:", error);
+      console.error("[AzureAIPlannerModule] Error:", error);
       throw error;
     }
   }

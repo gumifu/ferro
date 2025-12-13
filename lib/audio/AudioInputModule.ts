@@ -12,7 +12,7 @@ export class AudioInputModule {
   private timelineStartTime: number = 0;
   private lastTimelineUpdate: number = 0;
   private trackTimeStart: number = 0;
-  private sourceType: "mic" | "file" = "mic";
+  private sourceType: "mic" | "file" | "system" = "mic";
   private enableDebugLog: boolean = false;
 
   async startMic(enableDebug: boolean = false): Promise<void> {
@@ -45,6 +45,64 @@ export class AudioInputModule {
       this.startAnalysis();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "マイクの取得に失敗しました";
+      useAudioStore.getState().setError(errorMessage);
+      useAudioStore.getState().setIsRecording(false);
+      throw error;
+    }
+  }
+
+  async startSystemAudio(enableDebug: boolean = false): Promise<void> {
+    try {
+      this.enableDebugLog = enableDebug;
+      this.sourceType = "system";
+
+      // Check if getDisplayMedia is available
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error("ブラウザタブ音声はこの環境では利用できません");
+      }
+
+      // Request screen share with audio
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+
+      // Extract audio tracks only
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new Error("音声トラックが見つかりませんでした");
+      }
+
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.analyser.smoothingTimeConstant = 0.8;
+
+      this.stream = stream;
+      this.source = this.audioContext.createMediaStreamSource(stream);
+      this.source.connect(this.analyser);
+
+      // Handle stream end (user stops sharing)
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        this.stop();
+      });
+
+      this.timelineStartTime = Date.now();
+      this.trackTimeStart = this.audioContext.currentTime;
+      this.timelineFrames = [];
+      this.lastTimelineUpdate = 0;
+
+      useAudioStore.getState().setIsRecording(true);
+      useAudioStore.getState().setError(null);
+
+      if (this.enableDebugLog) {
+        console.log("[AudioInputModule] System audio started, timeline collection begins");
+      }
+
+      this.startAnalysis();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "ブラウザタブ音声の取得に失敗しました";
       useAudioStore.getState().setError(errorMessage);
       useAudioStore.getState().setIsRecording(false);
       throw error;

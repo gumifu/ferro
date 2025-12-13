@@ -3,18 +3,26 @@
 import { useState, useRef } from "react";
 import { useAudioStore } from "@/lib/stores/audioStore";
 import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
+import { useAIProviderStore } from "@/lib/stores/aiProviderStore";
 import { AudioInputModule } from "@/lib/audio/AudioInputModule";
-import { AIPlannerModule } from "@/lib/ai/AIPlannerModule";
+import { AIPlannerFactory } from "@/lib/ai/AIPlannerFactory";
 
 export function AudioControls() {
-  const [audioSource, setAudioSource] = useState<"mic" | "file">("mic");
+  const [audioSource, setAudioSource] = useState<"mic" | "file" | "system">(
+    "mic"
+  );
   const [enableDebug, setEnableDebug] = useState(false);
   const [userMoodText, setUserMoodText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioModuleRef = useRef<AudioInputModule | null>(null);
-  const aiPlannerRef = useRef<AIPlannerModule | null>(null);
+  const aiPlannerFactoryRef = useRef<AIPlannerFactory | null>(null);
   const { isRecording, error, timeline } = useAudioStore();
-  const { isGenerating: isAIGenerating, plan, error: aiError } = useAIPlanStore();
+  const { provider: aiProvider } = useAIProviderStore();
+  const {
+    isGenerating: isAIGenerating,
+    plan,
+    error: aiError,
+  } = useAIPlanStore();
 
   const handleStart = async () => {
     if (!audioModuleRef.current) {
@@ -24,13 +32,15 @@ export function AudioControls() {
     try {
       if (audioSource === "mic") {
         await audioModuleRef.current.startMic(enableDebug);
-      } else {
+      } else if (audioSource === "file") {
         const file = fileInputRef.current?.files?.[0];
         if (!file) {
           useAudioStore.getState().setError("音声ファイルを選択してください");
           return;
         }
         await audioModuleRef.current.startFile(file, enableDebug);
+      } else if (audioSource === "system") {
+        await audioModuleRef.current.startSystemAudio(enableDebug);
       }
 
       // For file source, generate plan immediately after metadata loads
@@ -51,27 +61,38 @@ export function AudioControls() {
       return;
     }
 
-    if (!aiPlannerRef.current) {
-      aiPlannerRef.current = new AIPlannerModule();
+    // AI providerが"none"の場合はスキップ
+    if (aiProvider === "none") {
+      console.log(
+        "[AudioControls] AI provider is set to 'none', skipping AI plan generation"
+      );
+      return;
+    }
+
+    if (!aiPlannerFactoryRef.current) {
+      aiPlannerFactoryRef.current = new AIPlannerFactory();
     }
 
     // Check if AI planner is available
-    if (!aiPlannerRef.current.isAvailable()) {
-      const errorMsg = "OpenAI APIキーが設定されていません。.env.localファイルにNEXT_PUBLIC_OPENAI_API_KEYを設定し、開発サーバーを再起動してください。";
+    if (!aiPlannerFactoryRef.current.isAvailable()) {
+      const providerName = aiProvider === "azure" ? "Azure" : "OpenAI";
+      const errorMsg = `${providerName} APIキーが設定されていません。.env.localファイル（開発環境）またはEnvironment Variables（本番環境）に必要な環境変数を設定してください。`;
       useAIPlanStore.getState().setError(errorMsg);
       console.error("[AudioControls]", errorMsg);
-      console.log("[AudioControls] Current env check:", {
-        hasKey: !!process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-        keyValue: process.env.NEXT_PUBLIC_OPENAI_API_KEY?.substring(0, 10) + "...",
-      });
       return;
     }
 
     try {
-      await aiPlannerRef.current.generatePlan(timeline, userMoodText);
+      const plan = await aiPlannerFactoryRef.current.generatePlan(
+        timeline,
+        userMoodText
+      );
+      if (!plan) {
+        console.warn("[AudioControls] AI plan generation returned null");
+      }
     } catch (err) {
       console.error("[AudioControls] AI plan generation error:", err);
-      // Error is already set in AIPlannerModule
+      // Error is already set in the planner module
     }
   };
 
@@ -93,7 +114,7 @@ export function AudioControls() {
       {/* Audio Source Selection */}
       <div className="mb-4">
         <label className="block text-sm mb-2">音声入力</label>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setAudioSource("mic")}
             className={`px-3 py-1 rounded text-sm ${
@@ -116,6 +137,17 @@ export function AudioControls() {
           >
             Audio File
           </button>
+          <button
+            onClick={() => setAudioSource("system")}
+            className={`px-3 py-1 rounded text-sm ${
+              audioSource === "system"
+                ? "bg-white text-black"
+                : "bg-gray-700 text-white"
+            }`}
+            disabled={isRecording}
+          >
+            Tab Audio
+          </button>
         </div>
       </div>
 
@@ -136,6 +168,13 @@ export function AudioControls() {
       {audioSource === "mic" && (
         <p className="text-xs text-gray-400 mb-4">
           マイクの音に反応して動きます。マイクの権限を許可してください。
+        </p>
+      )}
+
+      {/* System Audio Info */}
+      {audioSource === "system" && (
+        <p className="text-xs text-gray-400 mb-4">
+          ブラウザタブの音声に反応します。画面共有でタブを選択してください。
         </p>
       )}
 
@@ -231,7 +270,9 @@ export function AudioControls() {
             console.log("[AudioControls] Timeline JSON:");
             console.log(JSON.stringify(timeline, null, 2));
             navigator.clipboard.writeText(JSON.stringify(timeline, null, 2));
-            alert("Timeline JSONをコンソールに出力し、クリップボードにコピーしました");
+            alert(
+              "Timeline JSONをコンソールに出力し、クリップボードにコピーしました"
+            );
           }}
           className="mt-2 w-full px-3 py-1.5 bg-gray-700 text-white rounded text-sm hover:bg-gray-600 transition-colors"
         >

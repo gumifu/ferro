@@ -10,7 +10,7 @@ export type AudioTimeline = {
   trackInfo: {
     duration?: number;     // 取得できれば
     bpmApprox?: number | null;    // ざっくり推定 or null
-    source: "mic" | "file";
+    source: "mic" | "file" | "system";
   };
   frames: AudioFrame[];    // 0.5秒刻み程度（長すぎる場合は間引き）
 };

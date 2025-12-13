@@ -160,3 +160,4 @@ GSAPは60fpsを維持するように最適化されています：
 - `doc/v2-specification.md` - 遷移の設計原則
 - `doc/v2-implementation-guide.md` - 実装ガイド
 
+

@@ -246,3 +246,4 @@ src/
 AI が生成する Reflection は、音と時間から推測された「状態の反射」であり、キャラクターや解説ではない。
 
 **詳細は** [`v2-reflection-rules.md`](./v2-reflection-rules.md) **を参照**
+
