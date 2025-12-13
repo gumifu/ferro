@@ -64,10 +64,19 @@ export async function POST(req: NextRequest) {
       userMoodTextLength: userMoodText.length,
     });
 
-    if (!audioTimeline) {
-      console.error("[generate-plan] Missing audioTimeline");
+    // タイムラインがない場合は空のタイムラインを作成（userMoodTextのみで生成可能）
+    const finalTimeline: AudioTimeline = audioTimeline || {
+      trackInfo: {
+        source: "mic",
+      },
+      frames: [],
+    };
+
+    // タイムラインもuserMoodTextもない場合はエラー
+    if (finalTimeline.frames.length === 0 && !userMoodText) {
+      console.error("[generate-plan] Missing both audioTimeline and userMoodText");
       return NextResponse.json(
-        { error: "audioTimeline is required" },
+        { error: "Either audioTimeline or userMoodText is required" },
         { status: 400 }
       );
     }
@@ -109,7 +118,7 @@ USER_MOOD_TEXT:
 ${userMoodText || "(none)"}
 
 AUDIO_TIMELINE_JSON:
-${JSON.stringify(audioTimeline, null, 2)}
+${JSON.stringify(finalTimeline, null, 2)}
 
 Please respond ONLY with JSON following this schema:
 
@@ -300,9 +309,9 @@ Please respond ONLY with JSON following this schema:
 
     // Additional validation: ensure sections cover the timeline
     const timelineDuration =
-      audioTimeline.trackInfo.duration ||
-      (audioTimeline.frames.length > 0
-        ? audioTimeline.frames[audioTimeline.frames.length - 1].time
+      finalTimeline.trackInfo.duration ||
+      (finalTimeline.frames.length > 0
+        ? finalTimeline.frames[finalTimeline.frames.length - 1].time
         : 0);
 
     if (validatedPlan.sections.length > 0) {

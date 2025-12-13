@@ -6,6 +6,7 @@ import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
 import { useAIProviderStore } from "@/lib/stores/aiProviderStore";
 import { AudioInputModule } from "@/lib/audio/AudioInputModule";
 import { AIPlannerFactory } from "@/lib/ai/AIPlannerFactory";
+import { AzureSpeechModule } from "@/lib/ai/AzureSpeechModule";
 
 export function AudioControls() {
   const [audioSource, setAudioSource] = useState<"mic" | "file" | "system">(
@@ -16,7 +17,18 @@ export function AudioControls() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioModuleRef = useRef<AudioInputModule | null>(null);
   const aiPlannerFactoryRef = useRef<AIPlannerFactory | null>(null);
-  const { isRecording, error, timeline } = useAudioStore();
+  const speechModuleRef = useRef<AzureSpeechModule | null>(null);
+  const stopRealtimeRecognitionRef = useRef<(() => void) | null>(null);
+  const {
+    isRecording,
+    error,
+    timeline,
+    speechRecognitionResults,
+    isRecognizing,
+    addSpeechRecognitionResult,
+    setIsRecognizing,
+    clearSpeechRecognitionResults,
+  } = useAudioStore();
   const { provider: aiProvider } = useAIProviderStore();
   const {
     isGenerating: isAIGenerating,
@@ -107,6 +119,73 @@ export function AudioControls() {
     }
   };
 
+  const handleStartRealtimeRecognition = async () => {
+    if (!speechModuleRef.current) {
+      speechModuleRef.current = new AzureSpeechModule();
+    }
+
+    if (!speechModuleRef.current.isAvailable()) {
+      useAudioStore.getState().setError("Azure Speech AI is not available");
+      return;
+    }
+
+    // マイクストリームを取得
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      useAudioStore.getState().setError("マイクへのアクセスが拒否されました");
+      return;
+    }
+
+    setIsRecognizing(true);
+    useAudioStore.getState().setError(null);
+
+    try {
+      const stopFn = await speechModuleRef.current.startRealtimeRecognition(
+        stream,
+        "ja-JP",
+        (result) => {
+          // 認識結果を受け取る
+          addSpeechRecognitionResult({
+            text: result.text,
+            confidence: result.confidence,
+            language: "ja-JP",
+            timestamp: Date.now(),
+          });
+
+          console.log("[AudioControls] Speech recognition result:", result);
+        }
+      );
+
+      stopRealtimeRecognitionRef.current = stopFn;
+      console.log("[AudioControls] ✅ Realtime speech recognition started");
+    } catch (err) {
+      console.error(
+        "[AudioControls] Failed to start realtime recognition:",
+        err
+      );
+      useAudioStore
+        .getState()
+        .setError(
+          err instanceof Error
+            ? err.message
+            : "リアルタイム音声認識の開始に失敗しました"
+        );
+      setIsRecognizing(false);
+      stream.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const handleStopRealtimeRecognition = () => {
+    if (stopRealtimeRecognitionRef.current) {
+      stopRealtimeRecognitionRef.current();
+      stopRealtimeRecognitionRef.current = null;
+      setIsRecognizing(false);
+      console.log("[AudioControls] Realtime speech recognition stopped");
+    }
+  };
+
   return (
     <div className="absolute top-4 left-4 z-10 bg-black/50 backdrop-blur-sm rounded-lg p-4 text-white min-w-[280px] max-w-[320px]">
       <h2 className="text-lg font-semibold mb-4">ferro</h2>
@@ -176,6 +255,47 @@ export function AudioControls() {
         <p className="text-xs text-gray-400 mb-4">
           ブラウザタブの音声に反応します。画面共有でタブを選択してください。
         </p>
+      )}
+
+      {/* Realtime Speech Recognition */}
+      <div className="mb-4">
+        {!isRecognizing ? (
+          <button
+            onClick={handleStartRealtimeRecognition}
+            disabled={isRecording}
+            className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+          >
+            リアルタイム音声認識を開始
+          </button>
+        ) : (
+          <button
+            onClick={handleStopRealtimeRecognition}
+            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
+          >
+            音声認識を停止
+          </button>
+        )}
+      </div>
+
+      {/* Speech Recognition Results */}
+      {speechRecognitionResults.length > 0 && (
+        <div className="mb-4 p-2 bg-purple-500/20 border border-purple-500/50 rounded text-xs max-h-32 overflow-y-auto">
+          <div className="font-semibold mb-1">音声認識結果:</div>
+          {speechRecognitionResults.map((result, index) => (
+            <div key={index} className="mb-1">
+              <div className="text-white">{result.text}</div>
+              <div className="text-gray-400 text-xs">
+                信頼度: {(result.confidence * 100).toFixed(1)}%
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={clearSpeechRecognitionResults}
+            className="mt-2 text-xs text-purple-300 hover:text-purple-200"
+          >
+            クリア
+          </button>
+        </div>
       )}
 
       {/* User Mood Text Input */}

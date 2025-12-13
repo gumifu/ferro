@@ -21,6 +21,7 @@ AZURE_OPENAI_API_VERSION=2024-07-18
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Azure Speech AI（将来的な拡張用）
+# 注意: サーバーサイド専用（NEXT_PUBLIC_を付けない）
 AZURE_SPEECH_KEY=your_azure_speech_key_here
 AZURE_SPEECH_REGION=your_azure_region_here
 ```

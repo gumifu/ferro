@@ -9,6 +9,8 @@ import { useAIPlanStore } from "@/lib/stores/aiPlanStore";
 import { AIPlannerFactory } from "@/lib/ai/AIPlannerFactory";
 import { useAIProviderStore } from "@/lib/stores/aiProviderStore";
 import { ReflectionModule } from "@/lib/ai/ReflectionModule";
+import { useAudioStore } from "@/lib/stores/audioStore";
+import { AzureSpeechModule } from "@/lib/ai/AzureSpeechModule";
 import type { AudioFrame } from "@/lib/types";
 import type { Reflection, AudioSummary } from "@/lib/types/reflection";
 import { ReflectionDisplay } from "./ReflectionDisplay";
@@ -179,6 +181,8 @@ function createAnimatedGradientBackground(
 }
 
 export default function FerrofluidVisualizer() {
+  console.log("[FerrofluidVisualizer] 🎬 Component rendered");
+
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const systemAudioStreamRef = useRef<MediaStream | null>(null);
@@ -218,6 +222,8 @@ export default function FerrofluidVisualizer() {
   const aiPlannerFactoryRef = useRef<AIPlannerFactory | null>(null);
   const { provider: aiProvider } = useAIProviderStore();
   const reflectionModuleRef = useRef<ReflectionModule | null>(null);
+  const speechModuleRef = useRef<AzureSpeechModule | null>(null);
+  const stopRealtimeRecognitionRef = useRef<(() => void) | null>(null);
   const [userMoodText, setUserMoodText] = useState("");
   const [enableAITimeline, setEnableAITimeline] = useState(false);
   const enableAITimelineRef = useRef(false); // render関数内で最新値を参照するため
@@ -226,6 +232,13 @@ export default function FerrofluidVisualizer() {
     isGenerating: isAIGenerating,
     error: aiError,
   } = useAIPlanStore();
+  const {
+    speechRecognitionResults,
+    isRecognizing,
+    addSpeechRecognitionResult,
+    setIsRecognizing,
+    clearSpeechRecognitionResults,
+  } = useAudioStore();
   const aiPlanRef = useRef(aiPlan); // render関数内で最新値を参照するため
 
   // Reflection state
@@ -2568,6 +2581,110 @@ export default function FerrofluidVisualizer() {
   };
 
   // Reflectionを生成する関数（スタブ実装）
+  const handleStartRealtimeRecognition = async () => {
+    console.log(
+      "[FerrofluidVisualizer] 🎤 handleStartRealtimeRecognition called"
+    );
+
+    if (!speechModuleRef.current) {
+      console.log(
+        "[FerrofluidVisualizer] Creating new AzureSpeechModule instance"
+      );
+      speechModuleRef.current = new AzureSpeechModule();
+    }
+
+    console.log(
+      "[FerrofluidVisualizer] Checking if speech module is available..."
+    );
+    if (!speechModuleRef.current.isAvailable()) {
+      console.error(
+        "[FerrofluidVisualizer] ❌ Azure Speech AI is not available"
+      );
+      setError("Azure Speech AI is not available");
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+    console.log("[FerrofluidVisualizer] ✅ Speech module is available");
+
+    // マイクストリームを取得
+    console.log("[FerrofluidVisualizer] Requesting microphone access...");
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[FerrofluidVisualizer] ✅ Microphone access granted");
+    } catch (err) {
+      console.error("[FerrofluidVisualizer] ❌ Microphone access denied:", err);
+      setError("マイクへのアクセスが拒否されました");
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+
+    setIsRecognizing(true);
+    setError(null);
+    console.log("[FerrofluidVisualizer] Calling startRealtimeRecognition...");
+
+    try {
+      const stopFn = await speechModuleRef.current.startRealtimeRecognition(
+        stream,
+        "ja-JP",
+        (result) => {
+          // 認識結果を受け取る
+          console.log(
+            "[FerrofluidVisualizer] 📝 Speech recognition result callback:",
+            result
+          );
+          addSpeechRecognitionResult({
+            text: result.text,
+            confidence: result.confidence,
+            language: "ja-JP",
+            timestamp: Date.now(),
+          });
+
+          // 最終的な認識結果（isFinal: true）の場合、userMoodTextに自動設定
+          if (result.isFinal && result.text) {
+            console.log(
+              "[FerrofluidVisualizer] 🎯 Setting userMoodText from speech recognition:",
+              result.text
+            );
+            setUserMoodText((prev) => {
+              // 既存のテキストがある場合は改行で追加、ない場合は置き換え
+              return prev ? `${prev}\n${result.text}` : result.text;
+            });
+          }
+        }
+      );
+
+      stopRealtimeRecognitionRef.current = stopFn;
+      console.log(
+        "[FerrofluidVisualizer] ✅✅✅ Realtime speech recognition started successfully!"
+      );
+    } catch (err) {
+      console.error(
+        "[FerrofluidVisualizer] ❌ Failed to start realtime recognition:",
+        err
+      );
+      setError(
+        err instanceof Error
+          ? err.message
+          : "リアルタイム音声認識の開始に失敗しました"
+      );
+      setTimeout(() => setError(null), 5000);
+      setIsRecognizing(false);
+      stream.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const handleStopRealtimeRecognition = () => {
+    if (stopRealtimeRecognitionRef.current) {
+      stopRealtimeRecognitionRef.current();
+      stopRealtimeRecognitionRef.current = null;
+      setIsRecognizing(false);
+      console.log(
+        "[FerrofluidVisualizer] ✅ Realtime speech recognition stopped"
+      );
+    }
+  };
+
   const generateReflection = async () => {
     const summary = createAudioSummary();
     if (!summary) {
@@ -2612,10 +2729,12 @@ export default function FerrofluidVisualizer() {
       "[FerrofluidVisualizer] Timeline frames count:",
       timelineFramesRef.current.length
     );
+    console.log("[FerrofluidVisualizer] User mood text:", userMoodText);
 
-    if (timelineFramesRef.current.length === 0) {
+    // タイムラインがない場合でも、userMoodTextがあれば生成可能
+    if (timelineFramesRef.current.length === 0 && !userMoodText) {
       const errorMsg =
-        "タイムラインデータがありません。音声を再生してタイムラインを収集してください。";
+        "タイムラインデータまたはユーザーの気分テキストが必要です。音声を再生してタイムラインを収集するか、テキストを入力してください。";
       useAIPlanStore.getState().setError(errorMsg);
       console.warn("[FerrofluidVisualizer]", errorMsg);
       setError(errorMsg);
@@ -2648,7 +2767,7 @@ export default function FerrofluidVisualizer() {
     }
 
     try {
-      // タイムラインを作成
+      // タイムラインを作成（タイムラインがない場合は空のタイムラインを作成）
       const sourceType: "file" | "mic" | "system" = isPlayingFile
         ? "file"
         : isSystemAudio
@@ -2939,6 +3058,56 @@ export default function FerrofluidVisualizer() {
           </label>
         </div>
 
+        {/* Realtime Speech Recognition */}
+        <div className="mb-3">
+          {!isRecognizing ? (
+            <button
+              onClick={(e) => {
+                console.log("[FerrofluidVisualizer] 🔘 Button clicked!", {
+                  isRecording,
+                  isPlayingFile,
+                  isSystemAudio,
+                  disabled: isRecording || isPlayingFile || isSystemAudio,
+                });
+                e.preventDefault();
+                handleStartRealtimeRecognition();
+              }}
+              disabled={isRecording || isPlayingFile || isSystemAudio}
+              className="w-full px-4 py-2 bg-purple-600/40 hover:bg-purple-600/50 disabled:bg-gray-600/40 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+            >
+              リアルタイム音声認識を開始
+            </button>
+          ) : (
+            <button
+              onClick={handleStopRealtimeRecognition}
+              className="w-full px-4 py-2 bg-red-600/40 hover:bg-red-600/50 text-white rounded text-sm transition-colors"
+            >
+              音声認識を停止
+            </button>
+          )}
+        </div>
+
+        {/* Speech Recognition Results */}
+        {speechRecognitionResults.length > 0 && (
+          <div className="mb-3 p-2 bg-purple-500/20 border border-purple-500/50 rounded text-xs max-h-32 overflow-y-auto">
+            <div className="font-semibold mb-1">音声認識結果:</div>
+            {speechRecognitionResults.map((result, index) => (
+              <div key={index} className="mb-1">
+                <div className="text-white">{result.text}</div>
+                <div className="text-gray-400 text-xs">
+                  信頼度: {(result.confidence * 100).toFixed(1)}%
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={clearSpeechRecognitionResults}
+              className="mt-2 text-xs text-purple-300 hover:text-purple-200"
+            >
+              クリア
+            </button>
+          </div>
+        )}
+
         {/* User Mood Text Input */}
         <div className="mb-3">
           <label className="block text-sm mb-1">
@@ -2961,8 +3130,8 @@ export default function FerrofluidVisualizer() {
           onClick={generateAIPlanFromTimeline}
           className="w-full px-4 py-2 bg-blue-600/40 hover:bg-blue-600/50 text-white rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={
-            !enableAITimelineRef.current ||
-            timelineFrameCount === 0 ||
+            (!enableAITimelineRef.current && !userMoodText) ||
+            (timelineFrameCount === 0 && !userMoodText) ||
             isAIGenerating
           }
         >

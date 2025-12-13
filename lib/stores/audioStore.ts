@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import type { AudioFrame, AudioTimeline } from "@/lib/types";
 
+interface SpeechRecognitionResult {
+  text: string;
+  confidence: number;
+  language: string;
+  timestamp: number;
+}
+
 interface AudioStore {
   // Real-time audio values
   realtimeAudio: {
@@ -16,6 +23,10 @@ interface AudioStore {
   isRecording: boolean;
   trackTime: number; // 再生開始からの秒数
 
+  // Speech recognition
+  speechRecognitionResults: SpeechRecognitionResult[];
+  isRecognizing: boolean;
+
   // Error state
   error: string | null;
 
@@ -25,6 +36,9 @@ interface AudioStore {
   setIsRecording: (isRecording: boolean) => void;
   setTrackTime: (time: number) => void;
   setError: (error: string | null) => void;
+  addSpeechRecognitionResult: (result: SpeechRecognitionResult) => void;
+  setIsRecognizing: (isRecognizing: boolean) => void;
+  clearSpeechRecognitionResults: () => void;
   reset: () => void;
 }
 
@@ -37,6 +51,8 @@ export const useAudioStore = create<AudioStore>((set) => ({
   timeline: null,
   isRecording: false,
   trackTime: 0,
+  speechRecognitionResults: [],
+  isRecognizing: false,
   error: null,
 
   setRealtimeAudio: (audio) => set({ realtimeAudio: audio }),
@@ -44,11 +60,19 @@ export const useAudioStore = create<AudioStore>((set) => ({
   setIsRecording: (isRecording) => set({ isRecording }),
   setTrackTime: (time) => set({ trackTime: time }),
   setError: (error) => set({ error }),
+  addSpeechRecognitionResult: (result) =>
+    set((state) => ({
+      speechRecognitionResults: [...state.speechRecognitionResults, result],
+    })),
+  setIsRecognizing: (isRecognizing) => set({ isRecognizing }),
+  clearSpeechRecognitionResults: () => set({ speechRecognitionResults: [] }),
   reset: () => set({
     realtimeAudio: { volumeRms: 0, bass: 0, treble: 0 },
     timeline: null,
     isRecording: false,
     trackTime: 0,
+    speechRecognitionResults: [],
+    isRecognizing: false,
     error: null,
   }),
 }));
